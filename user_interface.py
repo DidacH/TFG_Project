@@ -7,6 +7,10 @@ from PIL import Image, ImageTk
 import io
 from datetime import datetime
 import re
+import os
+
+import cv2
+import tkinter as tk
 
 EMAIL_REGEX = r"^[\w\.-]+@[\w\.-]+\.\w+$"
 PASSWORD_REGEX = r"^(?=.*[0-9])(?=.*[\W_]).{4,}$"
@@ -192,8 +196,39 @@ def show_login():
     email_entry.pack()
 
     tk.Label(root, text="Password:").pack(pady=(10, 0))
-    password_entry = tk.Entry(root, show="*", width=40)
-    password_entry.pack()
+    password_frame = tk.Frame(root)
+    password_frame.pack()
+
+    password_entry = tk.Entry(password_frame, show="*", width=35)
+    password_entry.pack(side=tk.LEFT)
+
+    #Load eye icons
+    # script_dir = os.path.dirname(os.path.abspath(__file__))
+    # eye_path = os.path.join(script_dir, "Images", "eye.png")
+    # show_icon = tk.PhotoImage(file=eye_path)
+
+    # hidden_path = os.path.join(script_dir, "Images", "hidden.png")
+    # hide_icon = tk.PhotoImage(file=hidden_path)
+
+
+    #Reference must be stored to avoid garbage collection
+    # password_entry.show_icon = show_icon
+    # password_entry.hide_icon = hide_icon
+
+    show_password = False
+
+    # def toggle_password_visibility():
+    #     nonlocal show_password
+    #     show_password = not show_password
+    #     if show_password:
+    #         password_entry.config(show="")
+    #         toggle_button.config(image=hide_icon)
+    #     else:
+    #         password_entry.config(show="*")
+    #         toggle_button.config(image=show_icon)
+
+    # toggle_button = tk.Button(password_frame, image=show_icon, command=toggle_password_visibility, bd=0)
+    # toggle_button.pack(side=tk.LEFT, padx=(5, 0))
 
     def on_login():
         email = email_entry.get().strip()
@@ -294,9 +329,26 @@ def clear_frame():
     for widget in root.winfo_children():
         widget.destroy()
 
+def play_intro_video(video_path):
+    cap = cv2.VideoCapture(video_path)
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+        cv2.imshow("Welcome", frame)
+        if cv2.waitKey(25) & 0xFF == ord('q'):
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
+
 
 if __name__ == "__main__":
     init_db()
+
+    # Play video before showing GUI
+    #play_intro_video("intro.mp4")  # Adjust path accordingly
 
     root = tk.Tk()
     root.title("User System")

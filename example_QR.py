@@ -7,7 +7,7 @@ qr = qrcode.QRCode(
     border=4,
 )
 
-data = "Hello QR!"
+data = "Example QR Code Data"
 qr.add_data(data)
 qr.make(fit=True)
 
