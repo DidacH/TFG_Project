@@ -147,6 +147,7 @@ def show_registration():
 
     # Event bindings
     name_entry.bind("<FocusOut>", validate_name)
+    password_entry.bind("<KeyRelease>", validate_password_strength)
     email_entry.bind("<FocusOut>", validate_email)
     email_entry.bind("<KeyRelease>", lambda e: update_role_options_from_email(email_entry.get()))
     
