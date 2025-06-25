@@ -1,6 +1,13 @@
 import sqlite3
-import hashlib
+import bcrypt
 from datetime import datetime
+
+def delete_table():
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+    cursor.execute('DROP TABLE IF EXISTS users')
+    conn.commit()
+    conn.close()
 
 def init_db():
     conn = sqlite3.connect("users.db")
@@ -10,7 +17,7 @@ def init_db():
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             email TEXT NOT NULL UNIQUE,
-            password TEXT NOT NULL,
+            password BLOB NOT NULL,
             role TEXT NOT NULL,
             qr_image BLOB NOT NULL,
             last_qr_time TEXT NOT NULL
@@ -20,17 +27,19 @@ def init_db():
     conn.close()
 
 def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
+     return bcrypt.hashpw(password.encode(), bcrypt.gensalt())
 
-def save_user(id, name, email, password, role, qr_image_bytes):
+def check_password(password, hashed):
+    return bcrypt.checkpw(password.encode(), hashed)
+
+def save_user(id, name, email, password, role, qr_image_bytes, timestamp):
     conn = sqlite3.connect("users.db")
     cursor = conn.cursor()
     hashed_pw = hash_password(password)
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute('''
         INSERT INTO users (id, name, email, password, role, qr_image, last_qr_time)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (id, name, email, hashed_pw, role, qr_image_bytes, now))
+    ''', (id, name, email, hashed_pw, role, qr_image_bytes, timestamp))
     conn.commit()
     conn.close()
 
@@ -68,3 +77,9 @@ def get_user_by_email(email):
 
 def verify_password(stored_hash, input_password):
     return stored_hash == hash_password(input_password)
+
+
+# if __name__ == "__main__":
+
+    # delete_table()
+    # init_db() 

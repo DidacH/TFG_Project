@@ -1,8 +1,9 @@
 import qrcode
 import hmac, hashlib
 import time
+import io
 
-SECRET_KEY = b"secret_key"
+SECRET_KEY = b"secret_key" #Replace with a secure key!
 
 def generate_qr(user_id):
     timestamp = int(time.time())  #current UNIX time
@@ -12,7 +13,12 @@ def generate_qr(user_id):
     
     img = qrcode.make(content)
 
-    return img
+    #Convert image to bytes
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format='PNG')
+    img_bytes = img_bytes.getvalue()
+
+    return img_bytes, timestamp
 
 
 def verify_qr(content, expiration_seconds=30):  #QR valid for 30 seconds

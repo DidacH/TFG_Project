@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Register</title>
+    <style>
+        .error { color: red; font-size: 0.9em; }
+        input { display: block; margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+    <h2>Register</h2>
+    <form method="post">
+        <label>Name:</label>
+        <input type="text" name="name" value="{{ values.get('name', '') }}">
+        {% if errors.get('name') %}
+            <div class="error">{{ errors['name'] }}</div>
+        {% endif %}
+
+        <label>Email:</label>
+        <input type="email" name="email" value="{{ values.get('email', '') }}">
+        {% if errors.get('email') %}
+            <div class="error">{{ errors['email'] }}</div>
+        {% endif %}
+
+        <label>Password:</label>
+        <input type="password" name="password">
+        {% if errors.get('password') %}
+            <div class="error">{{ errors['password'] }}</div>
+        {% endif %}
+
+        <div class="form-group">
+            <label for="role">Role:</label>
+            <select name="role" id="role" required>
+                <option value="Student">Student</option>
+                <option value="Professor">Professor</option>
+                <option value="Staff">Staff</option>
+            </select>
+        </div>
+        {% if errors.get('role') %}
+            <p class="error">{{ errors['role'] }}</p>
+        {% endif %}
+
+
+        <br>
+        <input type="submit" value="Register">
+    </form>
+
+    <p>Already have an account? <a href="{{ url_for('login') }}">Log in</a></p>
+</body>
+</html>
