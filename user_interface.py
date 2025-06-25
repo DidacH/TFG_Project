@@ -75,6 +75,38 @@ def show_registration():
     password_strength = tk.Label(root, text="", fg="orange")
     password_strength.pack()
 
+    #Container to hold icon
+    icon_row = tk.Frame(root)
+    icon_row.pack()
+
+    #Load and resize icons
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    eye_path = os.path.join(script_dir, "Images", "eye.png")
+    hidden_path = os.path.join(script_dir, "Images", "hidden.png")
+
+    show_icon = tk.PhotoImage(file=eye_path).subsample(20, 20)
+    hide_icon = tk.PhotoImage(file=hidden_path).subsample(20, 20)
+
+    #Prevent garbage collection
+    password_entry.show_icon = show_icon
+    password_entry.hide_icon = hide_icon
+
+    show_password = False
+
+    def toggle_password_visibility():
+        nonlocal show_password
+        show_password = not show_password
+        if show_password:
+            password_entry.config(show="")
+            toggle_button.config(image=hide_icon)
+        else:
+            password_entry.config(show="*")
+            toggle_button.config(image=show_icon)
+
+    #Eye icon button
+    toggle_button = tk.Button(icon_row, image=show_icon, command=toggle_password_visibility, bd=0, padx=0, pady=0, highlightthickness=0)
+    toggle_button.pack(side=tk.LEFT, padx=(3, 0))
+
     #Role
     tk.Label(root, text="Role:").pack(pady=(10, 0))
     role_combobox = ttk.Combobox(root, values=[], state="readonly")
@@ -182,65 +214,63 @@ def show_registration():
         messagebox.showinfo("Success", "User registered successfully!")
         show_main_menu()
 
-    tk.Button(root, text="Submit Registration", command=on_submit).pack(pady=20)
-    tk.Button(root, text="Back to Menu", command=show_main_menu).pack(pady=(0, 10))
-
-
+    tk.Button(root, text="Submit Registration", command=on_submit).pack(pady=10)
+    tk.Button(root, text="Back to Menu", command=show_main_menu).pack(pady=(0, 0))
 
 
 def show_login():
     clear_frame()
 
+    #Email
     tk.Label(root, text="Email:").pack(pady=(20, 0))
     email_entry = tk.Entry(root, width=40)
     email_entry.pack()
 
+    #Password Label
     tk.Label(root, text="Password:").pack(pady=(10, 0))
-    password_frame = tk.Frame(root)
-    password_frame.pack()
+    password_entry = tk.Entry(root, show="*", width=40, bd=1)
+    password_entry.pack()
 
-    password_entry = tk.Entry(password_frame, show="*", width=35)
-    password_entry.pack(side=tk.LEFT)
+    #Container to hold icon
+    icon_row = tk.Frame(root)
+    icon_row.pack()
 
-    #Load eye icons
-    # script_dir = os.path.dirname(os.path.abspath(__file__))
-    # eye_path = os.path.join(script_dir, "Images", "eye.png")
-    # show_icon = tk.PhotoImage(file=eye_path)
+    #Password entry
+    # password_entry = tk.Entry(password_row, show="*", width=40, bd=1)
+    # password_entry.pack(side=tk.LEFT)
 
-    # hidden_path = os.path.join(script_dir, "Images", "hidden.png")
-    # hide_icon = tk.PhotoImage(file=hidden_path)
+    #Load and resize icons
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    eye_path = os.path.join(script_dir, "Images", "eye.png")
+    hidden_path = os.path.join(script_dir, "Images", "hidden.png")
 
+    show_icon = tk.PhotoImage(file=eye_path).subsample(20, 20)
+    hide_icon = tk.PhotoImage(file=hidden_path).subsample(20, 20)
 
-    #Reference must be stored to avoid garbage collection
-    # password_entry.show_icon = show_icon
-    # password_entry.hide_icon = hide_icon
+    #Prevent garbage collection
+    password_entry.show_icon = show_icon
+    password_entry.hide_icon = hide_icon
 
     show_password = False
 
-    # def toggle_password_visibility():
-    #     nonlocal show_password
-    #     show_password = not show_password
-    #     if show_password:
-    #         password_entry.config(show="")
-    #         toggle_button.config(image=hide_icon)
-    #     else:
-    #         password_entry.config(show="*")
-    #         toggle_button.config(image=show_icon)
+    def toggle_password_visibility():
+        nonlocal show_password
+        show_password = not show_password
+        if show_password:
+            password_entry.config(show="")
+            toggle_button.config(image=hide_icon)
+        else:
+            password_entry.config(show="*")
+            toggle_button.config(image=show_icon)
 
-    # toggle_button = tk.Button(password_frame, image=show_icon, command=toggle_password_visibility, bd=0)
-    # toggle_button.pack(side=tk.LEFT, padx=(5, 0))
+    #Eye icon button
+    toggle_button = tk.Button(icon_row, image=show_icon, command=toggle_password_visibility, bd=0, padx=0, pady=0, highlightthickness=0)
+    toggle_button.pack(side=tk.LEFT, padx=(3, 0))
 
-    def on_login():
-        email = email_entry.get().strip()
-        password = password_entry.get().strip()
+    #Login & Back buttons
+    tk.Button(root, text="Login", command=lambda: login_user(email_entry.get().strip(), password_entry.get().strip())).pack(pady=20)
+    tk.Button(root, text="Back to Menu", command=show_main_menu).pack(pady=(0, 10))
 
-        if not email or not password:
-            messagebox.showerror("Input Error", "Please fill in all fields.")
-            return
-
-        login_user(email, password)
-
-    tk.Button(root, text="Login", command=on_login).pack(pady=20)
 
 QR_REFRESH_INTERVAL = 30  #seconds
 
