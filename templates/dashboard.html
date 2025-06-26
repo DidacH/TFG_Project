@@ -3,11 +3,17 @@
 <head>
     <title>Dashboard</title>
     <script>
-        let refreshInterval = 30;  // QR refresh every 30 seconds
-        let remaining = refreshInterval;
+        const qrGeneratedAt = parseInt("{{ last_qr_time }}");  //UNIX timestamp
+        const refreshInterval = 30;  //seconds
+        let remaining = refreshInterval - (Math.floor(Date.now() / 1000) - qrGeneratedAt);
+
+        if (remaining < 0) remaining = 30; //QR already expired
 
         function startCountdown() {
             const countdownElement = document.getElementById("countdown");
+
+            // Set initial text based on computed remaining
+            countdownElement.innerText = "QR refreshes in " + remaining + " seconds";
 
             setInterval(() => {
                 remaining--;
@@ -34,6 +40,7 @@
 
         window.onload = startCountdown;
     </script>
+
 </head>
 <body>
     <h2>Welcome {{ name }}!</h2>
@@ -42,7 +49,7 @@
 
     <h3>Your QR Code:</h3>
     <img id="qr-img" src="data:image/png;base64,{{ qr_base64 }}" alt="User QR Code" width="200" height="200">
-    <p id="countdown">QR refreshes in 30 seconds</p>
+    <p id="countdown"></p>
 
     <br><br>
     <a href="{{ url_for('logout') }}">Log out</a>

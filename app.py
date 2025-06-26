@@ -100,7 +100,7 @@ def register():
 #Dashboard (protected)
 @app.route('/dashboard')
 def dashboard():
-    # Example assuming session['user_id'] is set
+
     user_id = session.get('user_id')
 
     conn = get_db_connection()
@@ -108,7 +108,7 @@ def dashboard():
     conn.close()
 
     if user:
-        # Convert BLOB QR image to base64 string
+        #Convert BLOB QR image to base64 string
         image = Image.open(BytesIO(user['qr_image']))
         buffer = BytesIO()
         image.save(buffer, format="PNG")
@@ -119,7 +119,8 @@ def dashboard():
             name=user['name'],
             email=user['email'],
             role=user['role'],
-            qr_base64=qr_base64
+            qr_base64=qr_base64,
+            last_qr_time=user['last_qr_time']
         )
     else:
         return redirect(url_for('login'))
