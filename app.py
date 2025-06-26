@@ -4,6 +4,9 @@ from QR_generation_validation import generate_qr
 import uuid
 from database import save_user, hash_password, check_password
 import os
+import base64
+from io import BytesIO
+from PIL import Image
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'  #Replace with a random secure key!
@@ -97,12 +100,56 @@ def register():
 #Dashboard (protected)
 @app.route('/dashboard')
 def dashboard():
-    if 'user_id' not in session:
+    # Example assuming session['user_id'] is set
+    user_id = session.get('user_id')
+
+    conn = get_db_connection()
+    user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+    conn.close()
+
+    if user:
+        # Convert BLOB QR image to base64 string
+        image = Image.open(BytesIO(user['qr_image']))
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        qr_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+        return render_template(
+            'dashboard.html',
+            name=user['name'],
+            email=user['email'],
+            role=user['role'],
+            qr_base64=qr_base64
+        )
+    else:
         return redirect(url_for('login'))
     
-    return render_template('dashboard.html', email=session['email'])
+@app.route('/refresh_qr')
+def refresh_qr():
+    user_id = session.get('user_id')
+    if not user_id:
+        return {"error": "Unauthorized"}, 401
 
-# Logout
+    conn = get_db_connection()
+    user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+    if not user:
+        conn.close()
+        return {"error": "User not found"}, 404
+
+    #Generate new QR
+    new_qr, timestamp = generate_qr(user_id)
+
+    #Update DB
+    conn.execute("UPDATE users SET qr_image = ?, last_qr_time = ? WHERE id = ?", (new_qr, timestamp, user_id))
+    conn.commit()
+    conn.close()
+
+    #Return new QR as base64
+    qr_base64 = base64.b64encode(new_qr).decode("utf-8")
+    return {"qr_base64": qr_base64}
+
+
+#Logout
 @app.route('/logout')
 def logout():
     session.clear()

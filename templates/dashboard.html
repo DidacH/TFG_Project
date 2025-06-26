@@ -2,10 +2,50 @@
 <html>
 <head>
     <title>Dashboard</title>
+    <script>
+        let refreshInterval = 30;  // QR refresh every 30 seconds
+        let remaining = refreshInterval;
+
+        function startCountdown() {
+            const countdownElement = document.getElementById("countdown");
+
+            setInterval(() => {
+                remaining--;
+                if (remaining <= 0) {
+                    fetchNewQR();
+                    remaining = refreshInterval;
+                }
+                countdownElement.innerText = "QR refreshes in " + remaining + " seconds";
+            }, 1000);
+        }
+
+        function fetchNewQR() {
+            fetch('/refresh_qr')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.qr_base64) {
+                        document.getElementById("qr-img").setAttribute("src", "data:image/png;base64," + data.qr_base64);
+                    }
+                })
+                .catch(error => {
+                    console.error("Error refreshing QR:", error);
+                });
+        }
+
+        window.onload = startCountdown;
+    </script>
 </head>
 <body>
-    <h2>Welcome {{ email }}!</h2>
-    <p>This is your profile/dashboard page.</p>
+    <h2>Welcome {{ name }}!</h2>
+    <p>Email: {{ email }}</p>
+    <p>Role: {{ role }}</p>
+
+    <h3>Your QR Code:</h3>
+    <img id="qr-img" src="data:image/png;base64,{{ qr_base64 }}" alt="User QR Code" width="200" height="200">
+    <p id="countdown">QR refreshes in 30 seconds</p>
+
+    <br><br>
     <a href="{{ url_for('logout') }}">Log out</a>
 </body>
 </html>
+

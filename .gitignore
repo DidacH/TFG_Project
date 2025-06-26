@@ -1,0 +1,7 @@
+#Ignore virtual environment directories
+venv/
+
+# Ignore Python bytecode files
+_pycache/
+*.py[cod]
+*.pyo
