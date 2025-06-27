@@ -1,6 +1,7 @@
 from QR_generation_validation import verify_qr
 from pyzbar.pyzbar import decode, ZBarSymbol
 import cv2
+import sqlite3
 
 def scan_qr():
     cam = cv2.VideoCapture(0)
@@ -34,18 +35,34 @@ def scan_qr():
 while True:
     print("Scanning for QR Code... (press ESC to quit)")
     result = scan_qr()
-
     if result is None:
         break
 
     print("QR Code Content:", result)
+    data = verify_qr(result)
 
-    # Example: call your validation function
-    is_valid = verify_qr(result)
-    if not is_valid:
-        print("Invalid QR Code!")
-    else:
+    # Log the attempt
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO logs (user_id, email, role, access_time, entry_allowed, reason)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (
+        data['user_id'],
+        data['email'],
+        data['role'],
+        data['access_time'],
+        int(data['valid']),
+        data['reason']
+    ))
+    conn.commit()
+    conn.close()
+
+    #Notify user
+    if data['valid']:
         print("QR Code scanned successfully!")
+    else:
+        print(f"Invalid QR Code: {data['reason']}")
 
 
 

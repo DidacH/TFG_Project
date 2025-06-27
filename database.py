@@ -26,6 +26,31 @@ def init_db():
     conn.commit()
     conn.close()
 
+def init_logs_table():
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT,
+            email TEXT,
+            role TEXT,
+            access_time TEXT NOT NULL,
+            entry_allowed INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+def delete_logs():
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+    cursor.execute('DROP TABLE IF EXISTS logs')
+    conn.commit()
+    conn.close()
+
 def hash_password(password):
      return bcrypt.hashpw(password.encode(), bcrypt.gensalt())
 
@@ -81,5 +106,7 @@ def verify_password(stored_hash, input_password):
 
 # if __name__ == "__main__":
 
-    # delete_table()
-    # init_db() 
+#     delete_table()
+#     init_db()
+    # delete_logs()
+    # init_logs_table()

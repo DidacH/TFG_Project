@@ -9,6 +9,20 @@ def view_users():
         print(user)
     conn.close()
 
+def view_logs():
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM logs")
+    logs = cursor.fetchall()
+    for log in logs:
+        print(log)
+    conn.close()
+
 if __name__ == "__main__":
     print("Current users in the database:")
     view_users()
+
+    print("\n##########################################################\n")
+
+    print("Current logs in the database:")
+    view_logs()
