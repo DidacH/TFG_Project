@@ -104,9 +104,9 @@ def verify_password(stored_hash, input_password):
     return stored_hash == hash_password(input_password)
 
 
-# if __name__ == "__main__":
+if __name__ == "__main__":
 
-#     delete_table()
-#     init_db()
-    # delete_logs()
-    # init_logs_table()
+    delete_table()
+    init_db()
+    delete_logs()
+    init_logs_table()

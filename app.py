@@ -2,8 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 import sqlite3
 from QR_generation_validation import generate_qr
 import uuid
-from database import save_user, hash_password, check_password
-import os
+from database import save_user, check_password
 import base64
 from io import BytesIO
 from PIL import Image
@@ -63,10 +62,10 @@ def register():
         password = request.form.get('password', '').strip()
         role = request.form['role']
 
-        # Save entered values so user doesn't need to retype
+        #Save entered values so user doesn't need to retype
         values = {'name': name, 'email': email}
 
-        # Validate fields
+        #Validate fields
         if not name:
             errors['name'] = "Name is required."
         if not email:
@@ -97,33 +96,51 @@ def register():
     return render_template('register.html', errors=errors, values=values)
 
 
-#Dashboard (protected)
+#Dashboard
 @app.route('/dashboard')
 def dashboard():
-
     user_id = session.get('user_id')
 
     conn = get_db_connection()
     user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+
+    if not user:
+        conn.close()
+        return redirect(url_for('login'))
+
+    # Convert BLOB QR image to base64 string
+    image = Image.open(BytesIO(user['qr_image']))
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    qr_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+    # Fetch last successful access
+    last_access = conn.execute('''
+        SELECT access_time FROM logs 
+        WHERE user_id = ? AND entry_allowed = 1 
+        ORDER BY access_time DESC LIMIT 1
+    ''', (user_id,)).fetchone()
+
+    # Fetch all successful accesses
+    history = conn.execute('''
+        SELECT access_time FROM logs 
+        WHERE user_id = ? AND entry_allowed = 1 
+        ORDER BY access_time DESC
+    ''', (user_id,)).fetchall()
+
     conn.close()
 
-    if user:
-        #Convert BLOB QR image to base64 string
-        image = Image.open(BytesIO(user['qr_image']))
-        buffer = BytesIO()
-        image.save(buffer, format="PNG")
-        qr_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+    return render_template(
+        'dashboard.html',
+        name=user['name'],
+        email=user['email'],
+        role=user['role'],
+        qr_base64=qr_base64,
+        last_qr_time=user['last_qr_time'],
+        last_access=last_access['access_time'] if last_access else None,
+        history=[row['access_time'] for row in history] if history else []
+    )
 
-        return render_template(
-            'dashboard.html',
-            name=user['name'],
-            email=user['email'],
-            role=user['role'],
-            qr_base64=qr_base64,
-            last_qr_time=user['last_qr_time']
-        )
-    else:
-        return redirect(url_for('login'))
     
 @app.route('/refresh_qr')
 def refresh_qr():

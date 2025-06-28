@@ -3,12 +3,66 @@
 <head>
     <title>Register</title>
     <style>
-        .error { color: red; font-size: 0.9em; }
-        input { display: block; margin-bottom: 5px; }
+        body {
+            font-family: sans-serif;
+            padding: 1em;
+            display: flex;
+            justify-content: center;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h2, p {
+            text-align: center;
+        }
+
+        .error {
+            color: red;
+            font-size: 0.9em;
+        }
+
+        form {
+            max-width: 400px;
+            width: 100%;
+        }
+
+        input, select {
+            display: block;
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 5px;
+            box-sizing: border-box;
+        }
+
+        .password-container {
+            position: relative;
+        }
+
+        .toggle-password {
+            position: absolute;
+            top: 50%;
+            right: 10px;
+            transform: translateY(-50%);
+            cursor: pointer;
+            width: 20px;
+            height: 20px;
+        }
+
+        @media (max-width: 500px) {
+            input, select {
+                font-size: 1em;
+            }
+
+            .toggle-password {
+                width: 18px;
+                height: 18px;
+            }
+        }
     </style>
 </head>
 <body>
     <h2>Register</h2>
+
     <form method="post">
         <label>Name:</label>
         <input type="text" name="name" value="{{ values.get('name', '') }}">
@@ -23,28 +77,43 @@
         {% endif %}
 
         <label>Password:</label>
-        <input type="password" name="password">
+        <div class="password-container">
+            <input type="password" name="password" id="password">
+            <img src="{{ url_for('static', filename='images/eye.png') }}" id="togglePassword" class="toggle-password" alt="Toggle Password">
+        </div>
         {% if errors.get('password') %}
             <div class="error">{{ errors['password'] }}</div>
         {% endif %}
 
-        <div class="form-group">
-            <label for="role">Role:</label>
-            <select name="role" id="role" required>
-                <option value="Student">Student</option>
-                <option value="Professor">Professor</option>
-                <option value="Staff">Staff</option>
-            </select>
-        </div>
+        <label for="role">Role:</label>
+        <select name="role" id="role" required>
+            <option value="Student">Student</option>
+            <option value="Professor">Professor</option>
+            <option value="Staff">Staff</option>
+        </select>
         {% if errors.get('role') %}
             <p class="error">{{ errors['role'] }}</p>
         {% endif %}
-
 
         <br>
         <input type="submit" value="Register">
     </form>
 
     <p>Already have an account? <a href="{{ url_for('login') }}">Log in</a></p>
+
+    <script>
+        const passwordInput = document.getElementById('password');
+        const togglePassword = document.getElementById('togglePassword');
+        const eyeIcon = "{{ url_for('static', filename='images/eye.png') }}";
+        const hiddenIcon = "{{ url_for('static', filename='images/hidden.png') }}";
+
+        togglePassword.addEventListener('click', () => {
+            const isPassword = passwordInput.type === 'password';
+            passwordInput.type = isPassword ? 'text' : 'password';
+            togglePassword.src = isPassword ? hiddenIcon : eyeIcon;
+        });
+    </script>
 </body>
 </html>
+
+

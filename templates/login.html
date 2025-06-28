@@ -2,31 +2,112 @@
 <html>
 <head>
     <title>Login</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 1em;
+            display: flex;
+            justify-content: center;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h2, p {
+            text-align: center;
+        }
+
+        form {
+            max-width: 400px;
+            width: 100%;
+        }
+
+        input {
+            display: block;
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+        }
+
+        .password-container {
+            position: relative;
+        }
+
+        .toggle-password {
+            position: absolute;
+            top: 50%;
+            right: 10px;
+            transform: translateY(-50%);
+            cursor: pointer;
+            width: 20px;
+            height: 20px;
+        }
+
+        .flash-message {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        @media (max-width: 500px) {
+            input {
+                font-size: 1em;
+            }
+
+            .toggle-password {
+                width: 18px;
+                height: 18px;
+            }
+        }
+    </style>
 </head>
 <body>
     <h2>Login</h2>
+
     {% with messages = get_flashed_messages() %}
       {% if messages %}
-        <ul>
+        <div class="flash-message">
           {% for message in messages %}
-            <li>{{ message }}</li>
+            <p>{{ message }}</p>
           {% endfor %}
-        </ul>
+        </div>
       {% endif %}
     {% endwith %}
 
     <form method="post">
-        <label for="email">Email:</label><br>
-        <input type="text" name="email" id="email"><br><br>
+        <label for="email">Email:</label>
+        <input type="text" name="email" id="email">
 
-        <label for="password">Password:</label><br>
-        <input type="password" name="password" id="password"><br><br>
+        <label for="password">Password:</label>
+        <div class="password-container">
+            <input type="password" name="password" id="password">
+            <img src="{{ url_for('static', filename='images/eye.png') }}" id="togglePassword" class="toggle-password" alt="Toggle Password">
+        </div>
 
         <input type="submit" value="Login">
     </form>
 
     <p>No account? <a href="{{ url_for('register') }}">Register here</a></p>
+
+    <script>
+        const passwordInput = document.getElementById('password');
+        const togglePassword = document.getElementById('togglePassword');
+        const eyeIcon = "{{ url_for('static', filename='images/eye.png') }}";
+        const hiddenIcon = "{{ url_for('static', filename='images/hidden.png') }}";
+
+        togglePassword.addEventListener('click', () => {
+            const isPassword = passwordInput.type === 'password';
+            passwordInput.type = isPassword ? 'text' : 'password';
+            togglePassword.src = isPassword ? hiddenIcon : eyeIcon;
+        });
+    </script>
 </body>
 </html>
+
 
 
