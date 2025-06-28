@@ -1,5 +1,12 @@
+/* ========== GLOBAL STYLES ========== */
 body {
     font-family: sans-serif;
+    margin: 0;
+    padding: 0;
+}
+
+/* ========== DASHBOARD PAGE STYLES ========== */
+.dashboard-page {
     padding: 1em;
     display: flex;
     flex-direction: column;
@@ -7,50 +14,50 @@ body {
     text-align: center;
 }
 
-h2, h3, h4, p {
+.dashboard-page h2,
+.dashboard-page h3,
+.dashboard-page h4,
+.dashboard-page p {
     margin: 10px 0;
 }
 
-img {
+.dashboard-page img {
     margin-top: 10px;
     width: 200px;
     height: 200px;
 }
 
-#welcome {
-    text-align: center;
-}
-
-.user-info {
+.dashboard-page .user-info {
     margin: 0 auto;
     text-align: left;
     width: fit-content;
 }
 
-.qr-title {
+.dashboard-page .qr-title {
     margin-bottom: 5px;
     margin-top: 30px;
 }
 
-#countdown {
+.dashboard-page #countdown {
     margin-top: 10px;
     font-weight: bold;
 }
 
-.last-access-title {
+.dashboard-page .last-access-title {
     margin-bottom: 5px;
 }
 
-.last-access-value {
+.dashboard-page .last-access-value {
     margin-top: 0;
 }
 
-#history-list {
+.dashboard-page #history-list {
     display: none;
     margin-top: 10px;
 }
 
-a {
+/* Dashboard links/buttons */
+.dashboard-page a {
     display: inline-block;
     margin-top: 20px;
     padding: 10px 20px;
@@ -61,21 +68,154 @@ a {
     transition: background-color 0.2s;
 }
 
-a:hover {
+.dashboard-page a:hover {
     background-color: #0056b3;
 }
 
+/* ========== LOGIN & REGISTER SHARED STYLES ========== */
+.login-page,
+.register-page {
+    padding: 1em;
+    display: flex;
+    justify-content: center;
+    flex-direction: column;
+    align-items: center;
+}
+
+.login-page h2,
+.login-page p,
+.register-page h2,
+.register-page p {
+    text-align: center;
+}
+
+.login-page form,
+.register-page form {
+    max-width: 400px;
+    width: 100%;
+}
+
+.login-page label,
+.register-page label {
+    display: block;
+    text-align: left;
+    margin-bottom: 5px;
+    font-weight: normal;
+}
+
+.login-page input,
+.register-page input,
+.register-page select {
+    display: block;
+    width: 100%;
+    padding: 8px;
+    margin-bottom: 10px;
+    box-sizing: border-box;
+}
+
+.password-container {
+    position: relative;
+}
+
+.toggle-password {
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    transform: translateY(-50%);
+    cursor: pointer;
+    width: 20px;
+    height: 20px;
+}
+
+/* Flash message */
+.login-page .flash-message {
+    background-color: #f8d7da;
+    color: #721c24;
+    padding: 10px;
+    margin: 10px 0;
+    border-radius: 5px;
+    width: 100%;
+    max-width: 400px;
+    text-align: center;
+}
+
+/* Redirect link */
+.login-page .redirect-link,
+.register-page .redirect-link {
+    margin-top: 10px;
+    font-size: 14px;
+}
+
+.login-page .redirect-link a {
+    display: inline-block;
+    padding: 10px 20px;
+    text-decoration: none;
+    background-color: #6c757d; 
+    color: white;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.login-page .redirect-link a:hover {
+    background-color: #5a6268;
+}
+
+.register-page .redirect-link a {
+    display: inline-block;
+    padding: 10px 20px;
+    text-decoration: none;
+    background-color: #007bff;
+    color: white;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.register-page .redirect-link a:hover {
+    background-color: #0056b3;
+}
+
+/* Error message */
+.error {
+    color: red;
+    font-size: 0.9em;
+    margin-top: -8px;
+    margin-bottom: 8px;
+}
+
+/* Submit button */
+input[type="submit"] {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 10px 20px;
+    cursor: pointer;
+}
+
+input[type="submit"]:hover {
+    background-color: #0056b3;
+}
+
+/* ========== MEDIA QUERIES ========== */
 @media (max-width: 500px) {
-    body {
-        padding: 0.5em;
+    .login-page input,
+    .register-page input,
+    .register-page select {
+        font-size: 1em;
     }
 
-    img {
+    .toggle-password {
+        width: 18px;
+        height: 18px;
+    }
+
+    .dashboard-page img {
         width: 150px;
         height: 150px;
     }
 
-    a {
+    .dashboard-page a {
         width: 80%;
     }
 }
+

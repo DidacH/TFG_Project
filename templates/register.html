@@ -26,11 +26,18 @@
             width: 100%;
         }
 
+        label {
+            display: block;
+            text-align: left;
+            margin-bottom: 5px;
+            font-weight: normal;
+        }
+
         input, select {
             display: block;
             width: 100%;
             padding: 8px;
-            margin-bottom: 5px;
+            margin-bottom: 10px;
             box-sizing: border-box;
         }
 
@@ -46,6 +53,38 @@
             cursor: pointer;
             width: 20px;
             height: 20px;
+        }
+
+        input[type="submit"] {
+            background-color: #007bff; /* Blue */
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 10px 20px;
+            cursor: pointer;
+        }
+
+        input[type="submit"]:hover {
+            background-color: #0056b3;
+        }
+
+        /* Redirect to login button */
+        .redirect-link {
+            margin-top: 10px;
+        }
+
+        .redirect-link a {
+            display: inline-block;
+            padding: 10px 20px;
+            text-decoration: none;
+            background-color: #6c757d;
+            color: white;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+        }
+
+        .redirect-link a:hover {
+            background-color: #5a6268;
         }
 
         @media (max-width: 500px) {
@@ -95,11 +134,12 @@
             <p class="error">{{ errors['role'] }}</p>
         {% endif %}
 
-        <br>
         <input type="submit" value="Register">
     </form>
 
-    <p>Already have an account? <a href="{{ url_for('login') }}">Log in</a></p>
+    <div class="redirect-link">Already have an account?
+        <a href="{{ url_for('login') }}">Log in</a>
+    </div>
 
     <script>
         const passwordInput = document.getElementById('password');
@@ -115,5 +155,6 @@
     </script>
 </body>
 </html>
+
 
 
