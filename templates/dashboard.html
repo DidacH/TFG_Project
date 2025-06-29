@@ -42,7 +42,8 @@
 
         function toggleHistory() {
             const list = document.getElementById("history-list");
-            list.style.display = list.style.display === "none" ? "block" : "none";
+            const isHidden = window.getComputedStyle(list).display === "none";
+            list.style.display = isHidden ? "block" : "none";
         }
     </script>
 </head>
