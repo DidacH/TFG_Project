@@ -31,14 +31,25 @@
 
         <label for="role">Role:</label>
         <select name="role" id="role" required>
-            <option value="Student">Student</option>
-            <option value="Professor">Professor</option>
-            <option value="Staff">Staff</option>
-            <option value="Admin">Admin</option>
+            <option value="Student" {% if values.get('role') == 'Student' %}selected{% endif %}>Student</option>
+            <option value="Professor" {% if values.get('role') == 'Professor' %}selected{% endif %}>Professor</option>
+            <option value="Staff" {% if values.get('role') == 'Staff' %}selected{% endif %}>Staff</option>
+            <option value="Admin" {% if values.get('role') == 'Admin' %}selected{% endif %}>Admin</option>
         </select>
         {% if errors.get('role') %}
             <p class="error">{{ errors['role'] }}</p>
         {% endif %}
+
+        <div id="admin-key-container" {% if values.get('role') != 'Admin' %}style="display: none;"{% endif %}>
+            <label>Admin Key:</label>
+            <div class="password-container">
+                <input type="password" name="admin_key" id="admin-key" value="{{ values.get('admin_key', '') }}">
+                <img src="{{ url_for('static', filename='images/eye.png') }}" id="toggleAdminKey" class="toggle-password" alt="Toggle Admin Key">
+            </div>
+            {% if errors.get('admin_key') %}
+                <div class="error">{{ errors['admin_key'] }}</div>
+            {% endif %}
+        </div>
 
         <input type="submit" value="Register">
     </form>
@@ -48,6 +59,7 @@
     </div>
 
     <script>
+        //Password toggle functionality
         const passwordInput = document.getElementById('password');
         const togglePassword = document.getElementById('togglePassword');
         const eyeIcon = "{{ url_for('static', filename='images/eye.png') }}";
@@ -57,6 +69,26 @@
             const isPassword = passwordInput.type === 'password';
             passwordInput.type = isPassword ? 'text' : 'password';
             togglePassword.src = isPassword ? hiddenIcon : eyeIcon;
+        });
+
+        //Admin Key toggle functionality
+        const adminKeyInput = document.getElementById('admin-key');
+        const toggleAdminKey = document.getElementById('toggleAdminKey');
+        
+        if (toggleAdminKey) {
+            toggleAdminKey.addEventListener('click', () => {
+                const isPassword = adminKeyInput.type === 'password';
+                adminKeyInput.type = isPassword ? 'text' : 'password';
+                toggleAdminKey.src = isPassword ? hiddenIcon : eyeIcon;
+            });
+        }
+
+        //Show/hide admin key field based on role selection
+        const roleSelect = document.getElementById('role');
+        const adminKeyContainer = document.getElementById('admin-key-container');
+
+        roleSelect.addEventListener('change', function() {
+            adminKeyContainer.style.display = this.value === 'Admin' ? 'block' : 'none';
         });
     </script>
 </body>

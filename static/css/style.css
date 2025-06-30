@@ -319,6 +319,18 @@ input[type="submit"]:hover {
     background-color: #0056b3;
 }
 
+#admin-key-container {
+    margin-top: 15px;
+    transition: all 0.3s ease;
+}
+
+#admin-key-container label {
+    display: block;
+    text-align: left;
+    margin-bottom: 5px;
+    font-weight: normal;
+}
+
 
 /* ========== FULL LOGS PAGE STYLES ========== */
 .logs-table {

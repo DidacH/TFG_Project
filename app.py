@@ -55,6 +55,8 @@ def login():
     
     return render_template('login.html')
 
+ADMIN_REGISTRATION_KEY = 'admin'
+
 #Registration page
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -67,8 +69,11 @@ def register():
         password = request.form.get('password', '').strip()
         role = request.form['role']
 
+        admin_key = request.form.get('admin_key', '')
+        
+
         #Save entered values so user doesn't need to retype
-        values = {'name': name, 'email': email}
+        values = {'name': name, 'email': email, 'role': role, 'admin_key': admin_key}
 
         #Validate fields
         if not name:
@@ -78,6 +83,13 @@ def register():
         if not password:
             errors['password'] = "Password is required."
 
+        #Admin key validation
+        if values['role'] == 'Admin':
+            if not values['admin_key']:
+                errors['admin_key'] = "Admin key is required"
+            elif values['admin_key'] != ADMIN_REGISTRATION_KEY:
+                errors['admin_key'] = "Invalid admin registration key. Please contact the administrator."
+
         if not errors:
             conn = get_db_connection()
             cursor = conn.execute('SELECT * FROM users WHERE email = ?', (email,))
@@ -85,7 +97,7 @@ def register():
             if cursor.fetchone():
                 errors['email'] = "This email is already registered."
             else:
-                #Generate unique user ID
+                
                 user_id = generate_unique_id()
 
                 #Generate first QR code for the user and save timestamp
