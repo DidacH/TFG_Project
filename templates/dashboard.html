@@ -12,8 +12,8 @@
         if (remaining < 0) remaining = 30; //QR already expired
 
         function startCountdown() {
-            const countdownElement = document.getElementById("countdown");
-            countdownElement.innerText = "QR refreshes in " + remaining + " seconds";
+            const countdownNumber = document.getElementById("countdown-number");
+            countdownNumber.textContent = remaining;
 
             setInterval(() => {
                 remaining--;
@@ -21,7 +21,7 @@
                     fetchNewQR();
                     remaining = refreshInterval;
                 }
-                countdownElement.innerText = "QR refreshes in " + remaining + " seconds";
+                countdownNumber.textContent = remaining;
             }, 1000);
         }
 
@@ -58,7 +58,11 @@
 
     <h3 class="qr-title">Your QR Code:</h3>
     <img id="qr-img" src="data:image/png;base64,{{ qr_base64 }}" alt="User QR Code">
-    <p id="countdown"></p>
+
+    <div id="countdown">
+        QR refreshes in <span id="countdown-number" class="countdown-number">30</span> seconds
+    </div>
+
 
     <div class="last-access">
         <h4 class="last-access-title">Last Access:</h4>

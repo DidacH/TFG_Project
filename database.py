@@ -35,6 +35,7 @@ def init_logs_table():
             user_id TEXT,
             email TEXT,
             role TEXT,
+            room TEXT,
             access_time TEXT NOT NULL,
             entry_allowed INTEGER NOT NULL,
             reason TEXT NOT NULL,

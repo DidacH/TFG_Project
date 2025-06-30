@@ -41,16 +41,19 @@ while True:
     print("QR Code Content:", result)
     data = verify_qr(result)
 
-    # Log the attempt
+    room = "room_1"
+
+    #Log the attempt
     conn = sqlite3.connect("users.db")
     cursor = conn.cursor()
     cursor.execute('''
-        INSERT INTO logs (user_id, email, role, access_time, entry_allowed, reason)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO logs (user_id, email, role, room, access_time, entry_allowed, reason)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
     ''', (
         data['user_id'],
         data['email'],
         data['role'],
+        room,
         data['access_time'],
         int(data['valid']),
         data['reason']

@@ -108,22 +108,22 @@ def dashboard():
         conn.close()
         return redirect(url_for('login'))
 
-    # Convert BLOB QR image to base64 string
+    #Convert BLOB QR image to base64 string
     image = Image.open(BytesIO(user['qr_image']))
     buffer = BytesIO()
     image.save(buffer, format="PNG")
     qr_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
 
-    # Fetch last successful access
+    #Fetch last successful access
     last_access = conn.execute('''
-        SELECT access_time FROM logs 
+        SELECT access_time, room FROM logs 
         WHERE user_id = ? AND entry_allowed = 1 
         ORDER BY access_time DESC LIMIT 1
     ''', (user_id,)).fetchone()
 
-    # Fetch all successful accesses
+    #Fetch all successful accesses
     history = conn.execute('''
-        SELECT access_time FROM logs 
+        SELECT access_time, room FROM logs 
         WHERE user_id = ? AND entry_allowed = 1 
         ORDER BY access_time DESC
     ''', (user_id,)).fetchall()
@@ -137,8 +137,8 @@ def dashboard():
         role=user['role'],
         qr_base64=qr_base64,
         last_qr_time=user['last_qr_time'],
-        last_access=last_access['access_time'] if last_access else None,
-        history=[row['access_time'] for row in history] if history else []
+        last_access=(f"{last_access['access_time']} / {last_access['room']}" if last_access else None),
+        history=[f"{row['access_time']} / {row['room']}" for row in history] if history else []
     )
 
     

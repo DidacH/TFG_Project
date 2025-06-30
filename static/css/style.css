@@ -43,6 +43,12 @@ body {
     font-weight: bold;
 }
 
+.countdown-number {
+    color: #007bff;
+    font-weight: bold;
+}
+
+
 .dashboard-page .last-access-title {
     margin-bottom: 5px;
 }
