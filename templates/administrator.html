@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Administrator Dashboard</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="main-container">
+        <h1 class="page-title">Welcome, {{ name }}</h1>
+
+        <section class="card">
+            <h2 class="section-title">Last 3 Accesses</h2>
+            <ul class="log-list">
+                {% for log in last_3 %}
+                    <li class="log-entry">
+                        <strong>User:</strong> {{ log.email }} |
+                        <strong>Role:</strong> {{ log.role }} |
+                        <strong>Time:</strong> {{ log.access_time }} |
+                        <strong>Entry Allowed?:</strong> {{ 'Yes' if log.entry_allowed else 'No' }} |
+                        <strong>Room:</strong> {{ log.room or 'N/A' }}
+                    </li>
+                {% endfor %}
+            </ul>
+        </section>
+
+
+        <a href="{{ url_for('full_logs') }}" class="button">View Full Registry</a>
+        <a href="{{ url_for('download_logs') }}" class="button">Download Logs (CSV)</a>
+        <a href="{{ url_for('logout') }}" class="button">Log out</a>
+
+    </div>
+</body>
+</html>

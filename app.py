@@ -1,11 +1,12 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask import Flask, render_template, request, redirect, url_for, session, flash, Response
 import sqlite3
 from QR_generation_validation import generate_qr
 import uuid
 from database import save_user, check_password
 import base64
-from io import BytesIO
+from io import BytesIO, StringIO
 from PIL import Image
+import csv
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'  #Replace with a random secure key!
@@ -42,7 +43,11 @@ def login():
             if check_password(introduced_password, user['password']):
                 session['user_id'] = user['id']
                 session['email'] = user['email']
-                return redirect(url_for('dashboard'))
+
+                if user['role'] == 'Admin':
+                    return redirect(url_for('administrator'))
+                else:
+                    return redirect(url_for('dashboard'))
             else:
                 flash('Incorrect password.')
         else:
@@ -165,6 +170,67 @@ def refresh_qr():
     #Return new QR as base64
     qr_base64 = base64.b64encode(new_qr).decode("utf-8")
     return {"qr_base64": qr_base64}
+
+def get_last3_logs():
+    conn = get_db_connection()
+    logs = conn.execute("SELECT * FROM logs ORDER BY access_time DESC LIMIT 3").fetchall()
+    conn.close()
+    return logs
+
+def get_all_logs():
+    conn = get_db_connection()
+    logs = conn.execute("SELECT * FROM logs ORDER BY access_time DESC").fetchall()
+    conn.close()
+    return logs
+
+@app.route('/administrator')
+def administrator():
+    user_id = session.get('user_id')
+    if not user_id:
+        return redirect(url_for('login'))
+
+    last_3 = get_last3_logs()
+    full_logs = get_all_logs()
+
+    conn = get_db_connection()
+    user = conn.execute('SELECT name FROM users WHERE id = ?', (user_id,)).fetchone()
+    conn.close()
+
+    name = user['name'] if user else "Administrator"
+
+    return render_template('administrator.html', name=name, last_3=last_3, full_logs=full_logs)
+
+@app.route('/download_logs')
+def download_logs():
+    logs = get_all_logs()
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['User ID', 'Email', 'Role', 'Room' 'Access Time', 'Entry Allowed?', 'Reason'])
+
+    for log in logs:
+        writer.writerow([
+            log['user_id'],
+            log['email'],
+            log['role'],
+            log['room'],
+            log['access_time'],
+            log['entry_allowed'],
+            log['reason'],
+        ])
+
+    output.seek(0)
+    return Response(
+        output,
+        mimetype='text/csv',
+        headers={'Content-Disposition': 'attachment; filename=logs.csv'}
+    )
+
+@app.route('/full_logs')
+def full_logs():
+    logs = get_all_logs()
+    return render_template('full_logs.html', logs=logs)
+
+
 
 
 #Logout

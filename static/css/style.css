@@ -1,6 +1,7 @@
 /* ========== GLOBAL STYLES ========== */
 body {
     font-family: sans-serif;
+    background-color: #f2f6fa;
     margin: 0;
     padding: 0;
 }
@@ -201,6 +202,117 @@ input[type="submit"] {
 input[type="submit"]:hover {
     background-color: #0056b3;
 }
+
+/* ========== ADMINISTRATOR PAGE STYLES ========== */
+
+.main-container {
+    max-width: 900px;
+    margin: 40px auto;
+    padding: 30px;
+    background-color: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.page-title {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.section-title {
+    margin-bottom: 15px;
+    font-size: 1.4em;
+    color: #333;
+}
+
+.card {
+    background-color: #f9f9f9;
+    border-radius: 10px;
+    padding: 20px;
+    margin-top: 30px;
+}
+
+.log-list {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+}
+
+.log-entry {
+    padding: 10px 15px;
+    margin-bottom: 10px;
+    background-color: #eef3fa;
+    border-radius: 8px;
+    border: 1px solid #d6e0ef;
+}
+
+.button {
+    display: inline-block;
+    padding: 10px 20px;
+    margin: 10px 5px 0 0;
+    background-color: #007bff;
+    color: white;
+    text-decoration: none;
+    font-weight: 500;
+    border-radius: 6px;
+    transition: background-color 0.3s ease;
+}
+
+.button:hover {
+    background-color: #0056b3;
+}
+
+
+/* ========== FULL LOGS PAGE STYLES ========== */
+.logs-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+    font-size: 16px;
+    background-color: #fdfdfd;
+}
+
+.logs-table th, .logs-table td {
+    border: 1px solid #ccc;
+    padding: 8px 12px;
+    text-align: left;
+}
+
+.logs-table th {
+    background-color: #e0e0e0;
+    font-weight: bold;
+}
+
+.logs-table tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+.admin-container {
+    width: 90%;
+    margin: 40px auto;
+    max-width: 1000px;
+    font-family: Arial, sans-serif;
+}
+
+.button {
+    display: inline-block;
+    background-color: #007bff;
+    color: white;
+    padding: 10px 20px;
+    margin-top: 20px;
+    text-decoration: none;
+    border-radius: 5px;
+    text-align: center;
+}
+
+.button:hover {
+    background-color: #0056b3;
+}
+
+.back-button-container {
+    text-align: center;
+}
+
 
 /* ========== MEDIA QUERIES ========== */
 @media (max-width: 500px) {

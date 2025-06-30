@@ -10,6 +10,7 @@
             justify-content: center;
             flex-direction: column;
             align-items: center;
+            background-color: #f2f6fa;
         }
 
         h2, p {
@@ -130,6 +131,7 @@
             <option value="Student">Student</option>
             <option value="Professor">Professor</option>
             <option value="Staff">Staff</option>
+            <option value="Admin">Admin</option>
         </select>
         {% if errors.get('role') %}
             <p class="error">{{ errors['role'] }}</p>

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Full Logs</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="admin-container">
+        <h1>Full Logs</h1>
+
+        <table class="logs-table">
+            <thead>
+                <tr>
+                    <th>User ID</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Access Time</th>
+                    <th>Entry Allowed?</th>
+                    <th>Reason</th>
+                    <th>Room</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                    <tr>
+                        <td>{{ log.user_id }}</td>
+                        <td>{{ log.email }}</td>
+                        <td>{{ log.role }}</td>
+                        <td>{{ log.access_time }}</td>
+                        <td>{{ 'Yes' if log.entry_allowed else 'No' }}</td>
+                        <td>{{ log.reason }}</td>
+                        <td>{{ log.room or 'N/A' }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <section class="log-actions">
+            <a href="{{ url_for('administrator') }}" class="button">Back to Administrator Page</a>
+            <a href="{{ url_for('download_logs') }}" class="button">Download Logs (CSV)</a>
+            <a href="{{ url_for('logout') }}" class="button">Log out</a>
+        </section>
+    </div>
+</body>
+</html>
