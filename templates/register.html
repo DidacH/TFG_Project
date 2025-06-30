@@ -2,106 +2,9 @@
 <html>
 <head>
     <title>Register</title>
-    <style>
-        body {
-            font-family: sans-serif;
-            padding: 1em;
-            display: flex;
-            justify-content: center;
-            flex-direction: column;
-            align-items: center;
-            background-color: #f2f6fa;
-        }
-
-        h2, p {
-            text-align: center;
-        }
-
-        .error {
-            color: red;
-            font-size: 0.9em;
-        }
-
-        form {
-            max-width: 400px;
-            width: 100%;
-        }
-
-        label {
-            display: block;
-            text-align: left;
-            margin-bottom: 5px;
-            font-weight: normal;
-        }
-
-        input, select {
-            display: block;
-            width: 100%;
-            padding: 8px;
-            margin-bottom: 10px;
-            box-sizing: border-box;
-        }
-
-        .password-container {
-            position: relative;
-        }
-
-        .toggle-password {
-            position: absolute;
-            top: 50%;
-            right: 10px;
-            transform: translateY(-50%);
-            cursor: pointer;
-            width: 20px;
-            height: 20px;
-        }
-
-        input[type="submit"] {
-            background-color: #007bff; /* Blue */
-            color: white;
-            border: none;
-            border-radius: 4px;
-            padding: 10px 20px;
-            cursor: pointer;
-        }
-
-        input[type="submit"]:hover {
-            background-color: #0056b3;
-        }
-
-        /* Redirect to login button */
-        .redirect-link {
-            margin-top: 10px;
-            font-size: 14px;
-        }
-
-        .redirect-link a {
-            display: inline-block;
-            padding: 10px 20px;
-            text-decoration: none;
-            background-color: #6c757d;
-            color: white;
-            border-radius: 4px;
-            transition: background-color 0.2s;
-        }
-
-        .redirect-link a:hover {
-            background-color: #5a6268;
-        }
-
-        @media (max-width: 500px) {
-            input, select {
-                font-size: 1em;
-            }
-
-            .toggle-password {
-                width: 18px;
-                height: 18px;
-            }
-        }
-    </style>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
-<body>
+<body class="register-page">
     <h2>Register</h2>
 
     <form method="post">
@@ -140,8 +43,8 @@
         <input type="submit" value="Register">
     </form>
 
-    <div class="redirect-link">Already have an account?
-        <a href="{{ url_for('login') }}">Log in</a>
+    <div class="redirect-link">
+        Already have an account? <a href="{{ url_for('login') }}">Log in</a>
     </div>
 
     <script>

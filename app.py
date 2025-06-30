@@ -204,24 +204,25 @@ def administrator():
 def download_logs():
     logs = get_all_logs()
     output = StringIO()
-    writer = csv.writer(output)
-    writer.writerow(['User ID', 'Email', 'Role', 'Room' 'Access Time', 'Entry Allowed?', 'Reason'])
+    writer = csv.writer(output, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+    writer.writerow(['User ID', 'Email', 'Role', 'Room', 'Access Time', 'Entry Allowed?', 'Reason'])
+    output.write('\ufeff')
 
     for log in logs:
         writer.writerow([
-            log['user_id'],
-            log['email'],
-            log['role'],
-            log['room'],
-            log['access_time'],
-            log['entry_allowed'],
-            log['reason'],
+            log['user_id'] if log['user_id'] else 'N/A',
+            log['email'] if log['email'] else 'N/A',
+            log['role'] if log['role'] else 'N/A',
+            log['room'] if log['room'] else 'N/A',
+            log['access_time'] if log['access_time'] else 'N/A',
+            log['entry_allowed'] if log['entry_allowed'] is not None else 'N/A',
+            log['reason'] if log['reason'] else 'N/A',
         ])
 
     output.seek(0)
     return Response(
-        output,
-        mimetype='text/csv',
+        output.getvalue(),
+        mimetype='text/csv; charset=utf-8',
         headers={'Content-Disposition': 'attachment; filename=logs.csv'}
     )
 

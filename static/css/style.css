@@ -63,7 +63,6 @@ body {
     margin-top: 10px;
 }
 
-/* Dashboard links/buttons */
 .dashboard-page a {
     display: inline-block;
     margin-top: 20px;
@@ -79,9 +78,92 @@ body {
     background-color: #0056b3;
 }
 
-/* ========== LOGIN & REGISTER SHARED STYLES ========== */
-.login-page,
+/* ========== REGISTER PAGE STYLES ========== */
 .register-page {
+    padding: 1em;
+    display: flex;
+    justify-content: center;
+    flex-direction: column;
+    align-items: center;
+    background-color: #f2f6fa;
+}
+
+.register-page h2, 
+.register-page p {
+    text-align: center;
+}
+
+.register-page form {
+    max-width: 400px;
+    width: 100%;
+}
+
+.register-page label {
+    display: block;
+    text-align: left;
+    margin-bottom: 5px;
+    font-weight: normal;
+}
+
+.register-page input,
+.register-page select {
+    display: block;
+    width: 100%;
+    padding: 8px;
+    margin-bottom: 10px;
+    box-sizing: border-box;
+}
+
+.register-page .password-container {
+    position: relative;
+}
+
+.register-page .toggle-password {
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    transform: translateY(-50%);
+    cursor: pointer;
+    width: 20px;
+    height: 20px;
+}
+
+.register-page input[type="submit"] {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 10px 20px;
+    cursor: pointer;
+    width: 100%;
+}
+
+.register-page input[type="submit"]:hover {
+    background-color: #0056b3;
+}
+
+.register-page .redirect-link {
+    margin-top: 10px;
+    font-size: 14px;
+    text-align: center;
+}
+
+.register-page .redirect-link a {
+    display: inline-block;
+    padding: 10px 20px;
+    text-decoration: none;
+    background-color: #6c757d;
+    color: white;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.register-page .redirect-link a:hover {
+    background-color: #5a6268;
+}
+
+/* ========== LOGIN STYLES ========== */
+.login-page{
     padding: 1em;
     display: flex;
     justify-content: center;
@@ -90,29 +172,23 @@ body {
 }
 
 .login-page h2,
-.login-page p,
-.register-page h2,
-.register-page p {
+.login-page p{
     text-align: center;
 }
 
-.login-page form,
-.register-page form {
+.login-page form{
     max-width: 400px;
     width: 100%;
 }
 
-.login-page label,
-.register-page label {
+.login-page label{
     display: block;
     text-align: left;
     margin-bottom: 5px;
     font-weight: normal;
 }
 
-.login-page input,
-.register-page input,
-.register-page select {
+.login-page input{
     display: block;
     width: 100%;
     padding: 8px;
@@ -134,7 +210,6 @@ body {
     height: 20px;
 }
 
-/* Flash message */
 .login-page .flash-message {
     background-color: #f8d7da;
     color: #721c24;
@@ -146,9 +221,7 @@ body {
     text-align: center;
 }
 
-/* Redirect link */
-.login-page .redirect-link,
-.register-page .redirect-link {
+.login-page .redirect-link{
     margin-top: 10px;
     font-size: 14px;
 }
@@ -167,21 +240,6 @@ body {
     background-color: #5a6268;
 }
 
-.register-page .redirect-link a {
-    display: inline-block;
-    padding: 10px 20px;
-    text-decoration: none;
-    background-color: #007bff;
-    color: white;
-    border-radius: 4px;
-    transition: background-color 0.2s;
-}
-
-.register-page .redirect-link a:hover {
-    background-color: #0056b3;
-}
-
-/* Error message */
 .error {
     color: red;
     font-size: 0.9em;
@@ -189,7 +247,6 @@ body {
     margin-bottom: 8px;
 }
 
-/* Submit button */
 input[type="submit"] {
     background-color: #007bff;
     color: white;
@@ -241,7 +298,7 @@ input[type="submit"]:hover {
 .log-entry {
     padding: 10px 15px;
     margin-bottom: 10px;
-    background-color: #eef3fa;
+    background-color: #e0e0e0;
     border-radius: 8px;
     border: 1px solid #d6e0ef;
 }
@@ -334,6 +391,16 @@ input[type="submit"]:hover {
 
     .dashboard-page a {
         width: 80%;
+    }
+
+    .register-page input,
+    .register-page select {
+        font-size: 1em;
+    }
+
+    .register-page .toggle-password {
+        width: 18px;
+        height: 18px;
     }
 }
 

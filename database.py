@@ -32,10 +32,10 @@ def init_logs_table():
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT,
+            user_id TEXT NOT NULL,
             email TEXT,
             role TEXT,
-            room TEXT,
+            room TEXT NOT NULL,
             access_time TEXT NOT NULL,
             entry_allowed INTEGER NOT NULL,
             reason TEXT NOT NULL,
