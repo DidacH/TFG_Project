@@ -3,13 +3,12 @@
 <head>
     <title>Dashboard</title>
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
-
     <script>
-        const qrGeneratedAt = parseInt("{{ last_qr_time }}");  //UNIX timestamp
-        const refreshInterval = 30;  //seconds
+        const qrGeneratedAt = parseInt("{{ last_qr_time }}");
+        const refreshInterval = 30;
         let remaining = refreshInterval - (Math.floor(Date.now() / 1000) - qrGeneratedAt);
 
-        if (remaining < 0) remaining = 30; //QR already expired
+        if (remaining < 0) remaining = 30;
 
         function startCountdown() {
             const countdownNumber = document.getElementById("countdown-number");
@@ -49,41 +48,44 @@
 </head>
 
 <body class="dashboard-page">
-    <h2 class="welcome">Welcome, {{ name }}!</h2>
+    <div class="main-container">
+        <h2 class="welcome">Welcome, {{ name }}!</h2>
 
-    <div class="user-info">
-        <p><strong>Email:</strong> {{ email }}</p>
-        <p><strong>Role:</strong> {{ role }}</p>
+        <div class="card qr-section">
+            <h3 class="section-title centered-title">Your QR Code</h3>
+            <img id="qr-img" src="data:image/png;base64,{{ qr_base64 }}" alt="User QR Code">
+            <div id="countdown" class="centered-text">
+                QR refreshes in <span id="countdown-number" class="countdown-number">30</span> seconds
+            </div>
+            
+            <div class="user-info centered-text">
+                <p><strong>Email:</strong> {{ email }}</p>
+                <p><strong>Role:</strong> {{ role }}</p>
+            </div>
+        </div>
+
+        <div class="card last-access centered-text">
+            <h4 class="section-title">Last Access</h4>
+            {% if last_access %}
+                <p>{{ last_access }}</p>
+            {% else %}
+                <p>No access yet.</p>
+            {% endif %}
+        </div>
+
+        <div class="card history-section">
+            <div class="history-header centered-text">
+                <h4 class="section-title">Access History</h4>
+                <button onclick="toggleHistory()" class="toggle-button">Show/Hide History</button>
+            </div>
+            <ul id="history-list" class="history-list centered-text">
+                {% for entry in history %}
+                    <li>{{ entry }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <a href="{{ url_for('logout') }}" class="button logout-button">Log out</a>
     </div>
-
-    <h3 class="qr-title">Your QR Code:</h3>
-    <img id="qr-img" src="data:image/png;base64,{{ qr_base64 }}" alt="User QR Code">
-
-    <div id="countdown">
-        QR refreshes in <span id="countdown-number" class="countdown-number">30</span> seconds
-    </div>
-
-
-    <div class="last-access">
-        <h4 class="last-access-title">Last Access:</h4>
-        {% if last_access %}
-            <p class="last-access-value">{{ last_access }}</p>
-        {% else %}
-            <p class="last-access-value">No access yet.</p>
-        {% endif %}
-    </div>
-
-    <h4 class="history-title">Access History</h4>
-    <button onclick="toggleHistory()">Show / Hide Full History</button>
-    <ul id="history-list">
-        {% for entry in history %}
-            <li>{{ entry }}</li>
-        {% endfor %}
-    </ul>
-
-    <a href="{{ url_for('logout') }}">Log out</a>
 </body>
 </html>
-
-
-

@@ -5,10 +5,11 @@
     <title>Administrator Dashboard</title>
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
-<body>
+<body class ="admin-page">
     <div class="main-container">
         <h1 class="page-title">Welcome, {{ name }}</h1>
 
+        <!-- Last 3 Accesses -->
         <section class="card">
             <h2 class="section-title">Last 3 Accesses</h2>
             <ul class="log-list">
@@ -22,12 +23,29 @@
                     </li>
                 {% endfor %}
             </ul>
+            <a href="{{ url_for('full_logs') }}" class="button">View Full Registry</a>
+            <a href="{{ url_for('download_logs') }}" class="button">Download Logs (CSV)</a>
         </section>
 
+        <!-- Last 3 Registered Users -->
+        <section class="card">
+            <h2 class="section-title">Last 3 Registered Users</h2>
+            <ul class="log-list">
+                {% for user in last_3_users %}
+                    <li class="log-entry">
+                        <strong>Name:</strong> {{ user.name }} |
+                        <strong>Email:</strong> {{ user.email }} |
+                        <strong>Role:</strong> {{ user.role }} |
+                        <strong>Registered:</strong> {{ user.registered_at }}
+                    </li>
+                {% endfor %}
+            </ul>
+            <a href="{{ url_for('full_users') }}" class="button">View All Users</a>
+            <a href="{{ url_for('download_users') }}" class="button">Download Users (CSV)</a>
+        </section>
 
-        <a href="{{ url_for('full_logs') }}" class="button">View Full Registry</a>
-        <a href="{{ url_for('download_logs') }}" class="button">Download Logs (CSV)</a>
-        <a href="{{ url_for('logout') }}" class="button">Log out</a>
+        <!-- Logout -->
+        <a href="{{ url_for('logout') }}" class="button logout-button">Log out</a>
 
     </div>
 </body>

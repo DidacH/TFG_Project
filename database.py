@@ -20,7 +20,8 @@ def init_db():
             password BLOB NOT NULL,
             role TEXT NOT NULL,
             qr_image BLOB NOT NULL,
-            last_qr_time TEXT NOT NULL
+            last_qr_time TEXT NOT NULL,
+            registered_at TEXT NOT NULL
         )
     ''')
     conn.commit()
@@ -58,14 +59,14 @@ def hash_password(password):
 def check_password(password, hashed):
     return bcrypt.checkpw(password.encode(), hashed)
 
-def save_user(id, name, email, password, role, qr_image_bytes, timestamp):
+def save_user(id, name, email, password, role, qr_image_bytes, timestamp, registered_at):
     conn = sqlite3.connect("users.db")
     cursor = conn.cursor()
     hashed_pw = hash_password(password)
     cursor.execute('''
-        INSERT INTO users (id, name, email, password, role, qr_image, last_qr_time)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (id, name, email, hashed_pw, role, qr_image_bytes, timestamp))
+        INSERT INTO users (id, name, email, password, role, qr_image, last_qr_time, registered_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (id, name, email, hashed_pw, role, qr_image_bytes, timestamp, registered_at))
     conn.commit()
     conn.close()
 

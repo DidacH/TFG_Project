@@ -7,6 +7,7 @@ import base64
 from io import BytesIO, StringIO
 from PIL import Image
 import csv
+from datetime import datetime
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'  #Replace with a random secure key!
@@ -103,7 +104,9 @@ def register():
                 #Generate first QR code for the user and save timestamp
                 qrimage, last_qr_time = generate_qr(user_id)
 
-                save_user(user_id, name, email, password, role, qrimage, last_qr_time)
+                registered_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+                save_user(user_id, name, email, password, role, qrimage, last_qr_time, registered_at)
 
                 return redirect(url_for('login'))
 
@@ -195,14 +198,28 @@ def get_all_logs():
     conn.close()
     return logs
 
+def get_last_3_users():
+    conn = get_db_connection()
+    users = conn.execute('SELECT * FROM users ORDER BY registered_at DESC LIMIT 3').fetchall()
+    conn.close()
+    return users
+
+
+def get_all_users():
+    conn = get_db_connection()
+    users = conn.execute('SELECT * FROM users ORDER BY registered_at DESC').fetchall()
+    conn.close()
+    return users
+
+
 @app.route('/administrator')
 def administrator():
     user_id = session.get('user_id')
     if not user_id:
         return redirect(url_for('login'))
 
-    last_3 = get_last3_logs()
-    full_logs = get_all_logs()
+    last_3_logs = get_last3_logs()
+    last_3_users = get_last_3_users()
 
     conn = get_db_connection()
     user = conn.execute('SELECT name FROM users WHERE id = ?', (user_id,)).fetchone()
@@ -210,7 +227,8 @@ def administrator():
 
     name = user['name'] if user else "Administrator"
 
-    return render_template('administrator.html', name=name, last_3=last_3, full_logs=full_logs)
+    return render_template('administrator.html', name=name, last_3_logs=last_3_logs, last_3_users=last_3_users)
+
 
 @app.route('/download_logs')
 def download_logs():
@@ -238,12 +256,42 @@ def download_logs():
         headers={'Content-Disposition': 'attachment; filename=logs.csv'}
     )
 
+
 @app.route('/full_logs')
 def full_logs():
     logs = get_all_logs()
     return render_template('full_logs.html', logs=logs)
 
 
+@app.route('/full_users')
+def full_users():
+    users = get_all_users()
+    return render_template('full_users.html', users=users)
+
+
+@app.route('/download_users')
+def download_users():
+    users = get_all_users()
+
+    output = StringIO()
+    writer = csv.writer(output, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+    writer.writerow(['ID', 'Name', 'Email', 'Role'])
+    output.write('\ufeff')
+
+    for user in users:
+        writer.writerow([
+            user['id'],
+            user['name'],
+            user['email'],
+            user['role'],
+        ])
+
+    output.seek(0)
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv; charset=utf-8',
+        headers={'Content-Disposition': 'attachment; filename=users.csv'}
+    )
 
 
 #Logout

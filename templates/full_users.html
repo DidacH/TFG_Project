@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Full Users</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="admin-container">
+        <h1>Registered Users</h1>
+
+        <table class="logs-table">
+            <thead>
+                <tr>
+                    <th>User ID</th>
+                    <th>Email</th>
+                    <th>Name</th>
+                    <th>Role</th>
+                    <th>Registered At</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                    <tr>
+                        <td>{{ user.id }}</td>
+                        <td>{{ user.email }}</td>
+                        <td>{{ user.name }}</td>
+                        <td>{{ user.role }}</td>
+                        <td>{{ user.registered_at }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <section class="log-actions">
+            <a href="{{ url_for('administrator') }}" class="button">Back to Administrator Page</a>
+            <a href="{{ url_for('download_users') }}" class="button">Download Users (CSV)</a>
+            <a href="{{ url_for('logout') }}" class="button">Log out</a>
+        </section>
+    </div>
+</body>
+</html>

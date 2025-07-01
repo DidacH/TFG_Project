@@ -5,57 +5,59 @@
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body class="register-page">
-    <h2>Register</h2>
+    <div class="main-container">
+        <h2>Register</h2>
 
-    <form method="post">
-        <label>Name:</label>
-        <input type="text" name="name" value="{{ values.get('name', '') }}">
-        {% if errors.get('name') %}
-            <div class="error">{{ errors['name'] }}</div>
-        {% endif %}
-
-        <label>Email:</label>
-        <input type="email" name="email" value="{{ values.get('email', '') }}">
-        {% if errors.get('email') %}
-            <div class="error">{{ errors['email'] }}</div>
-        {% endif %}
-
-        <label>Password:</label>
-        <div class="password-container">
-            <input type="password" name="password" id="password">
-            <img src="{{ url_for('static', filename='images/eye.png') }}" id="togglePassword" class="toggle-password" alt="Toggle Password">
-        </div>
-        {% if errors.get('password') %}
-            <div class="error">{{ errors['password'] }}</div>
-        {% endif %}
-
-        <label for="role">Role:</label>
-        <select name="role" id="role" required>
-            <option value="Student" {% if values.get('role') == 'Student' %}selected{% endif %}>Student</option>
-            <option value="Professor" {% if values.get('role') == 'Professor' %}selected{% endif %}>Professor</option>
-            <option value="Staff" {% if values.get('role') == 'Staff' %}selected{% endif %}>Staff</option>
-            <option value="Admin" {% if values.get('role') == 'Admin' %}selected{% endif %}>Admin</option>
-        </select>
-        {% if errors.get('role') %}
-            <p class="error">{{ errors['role'] }}</p>
-        {% endif %}
-
-        <div id="admin-key-container" {% if values.get('role') != 'Admin' %}style="display: none;"{% endif %}>
-            <label>Admin Key:</label>
-            <div class="password-container">
-                <input type="password" name="admin_key" id="admin-key" value="{{ values.get('admin_key', '') }}">
-                <img src="{{ url_for('static', filename='images/eye.png') }}" id="toggleAdminKey" class="toggle-password" alt="Toggle Admin Key">
-            </div>
-            {% if errors.get('admin_key') %}
-                <div class="error">{{ errors['admin_key'] }}</div>
+        <form method="post">
+            <label>Name:</label>
+            <input type="text" name="name" value="{{ values.get('name', '') }}">
+            {% if errors.get('name') %}
+                <div class="error">{{ errors['name'] }}</div>
             {% endif %}
+
+            <label>Email:</label>
+            <input type="email" name="email" value="{{ values.get('email', '') }}">
+            {% if errors.get('email') %}
+                <div class="error">{{ errors['email'] }}</div>
+            {% endif %}
+
+            <label>Password:</label>
+            <div class="password-container">
+                <input type="password" name="password" id="password">
+                <img src="{{ url_for('static', filename='images/eye.png') }}" id="togglePassword" class="toggle-password" alt="Toggle Password">
+            </div>
+            {% if errors.get('password') %}
+                <div class="error">{{ errors['password'] }}</div>
+            {% endif %}
+
+            <label for="role">Role:</label>
+            <select name="role" id="role" required>
+                <option value="Student" {% if values.get('role') == 'Student' %}selected{% endif %}>Student</option>
+                <option value="Professor" {% if values.get('role') == 'Professor' %}selected{% endif %}>Professor</option>
+                <option value="Staff" {% if values.get('role') == 'Staff' %}selected{% endif %}>Staff</option>
+                <option value="Admin" {% if values.get('role') == 'Admin' %}selected{% endif %}>Admin</option>
+            </select>
+            {% if errors.get('role') %}
+                <p class="error">{{ errors['role'] }}</p>
+            {% endif %}
+
+            <div id="admin-key-container" {% if values.get('role') != 'Admin' %}style="display: none;"{% endif %}>
+                <label>Admin Key:</label>
+                <div class="password-container">
+                    <input type="password" name="admin_key" id="admin-key" value="{{ values.get('admin_key', '') }}">
+                    <img src="{{ url_for('static', filename='images/eye.png') }}" id="toggleAdminKey" class="toggle-password" alt="Toggle Admin Key">
+                </div>
+                {% if errors.get('admin_key') %}
+                    <div class="error">{{ errors['admin_key'] }}</div>
+                {% endif %}
+            </div>
+
+            <input type="submit" value="Register">
+        </form>
+
+        <div class="redirect-link">
+            Already have an account? <a href="{{ url_for('login') }}">Log in</a>
         </div>
-
-        <input type="submit" value="Register">
-    </form>
-
-    <div class="redirect-link">
-        Already have an account? <a href="{{ url_for('login') }}">Log in</a>
     </div>
 
     <script>
@@ -93,6 +95,3 @@
     </script>
 </body>
 </html>
-
-
-

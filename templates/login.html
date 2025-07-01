@@ -5,32 +5,34 @@
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body class="login-page">
-    <h2>Login</h2>
+    <div class="main-container">
+        <h2>Login</h2>
 
-    {% with messages = get_flashed_messages() %}
-      {% if messages %}
-        <div class="flash-message">
-          {% for message in messages %}
-            <p>{{ message }}</p>
-          {% endfor %}
-        </div>
-      {% endif %}
-    {% endwith %}
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            <div class="flash-message">
+              {% for message in messages %}
+                <p>{{ message }}</p>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
 
-    <form method="post">
-        <label for="email">Email:</label>
-        <input type="text" name="email" id="email">
+        <form method="post">
+            <label for="email">Email:</label>
+            <input type="text" name="email" id="email">
 
-        <label for="password">Password:</label>
-        <div class="password-container">
-            <input type="password" name="password" id="password">
-            <img src="{{ url_for('static', filename='images/eye.png') }}" id="togglePassword" class="toggle-password" alt="Toggle Password">
-        </div>
+            <label for="password">Password:</label>
+            <div class="password-container">
+                <input type="password" name="password" id="password">
+                <img src="{{ url_for('static', filename='images/eye.png') }}" id="togglePassword" class="toggle-password" alt="Toggle Password">
+            </div>
 
-        <input type="submit" value="Login">
-    </form>
+            <input type="submit" value="Login">
+        </form>
 
-    <p class="redirect-link">No account? <a href="{{ url_for('register') }}">Register here</a></p>
+        <p class="redirect-link">No account? <a href="{{ url_for('register') }}">Register here</a></p>
+    </div>
 
     <script>
         const passwordInput = document.getElementById('password');
@@ -46,7 +48,3 @@
     </script>
 </body>
 </html>
-
-
-
-

@@ -8,100 +8,170 @@ body {
 
 /* ========== DASHBOARD PAGE STYLES ========== */
 .dashboard-page {
-    padding: 1em;
+    background-color: #f2f6fa;
+    padding: 0;
+    min-height: 100vh;
     display: flex;
-    flex-direction: column;
-    align-items: center;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 5vh;
+}
+
+.dashboard-page .main-container {
+    background-color: white;
+    padding: 40px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 600px;
+    margin-top: 5vh;
+}
+
+.dashboard-page .card {
+    background-color: #f9f9f9;
+    border-radius: 8px;
+    padding: 25px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    border: 1px solid #eaeaea;
+}
+
+.dashboard-page .section-title {
+    color: #333;
+    margin-bottom: 15px;
+    font-size: 1.2em;
+}
+
+.dashboard-page .centered-title {
     text-align: center;
 }
 
-.dashboard-page h2,
-.dashboard-page h3,
-.dashboard-page h4,
-.dashboard-page p {
-    margin: 10px 0;
+.dashboard-page .centered-text {
+    text-align: center;
+}
+
+.dashboard-page .welcome {
+    text-align: center;
+    margin-bottom: 25px;
+    color: #C8102E;
 }
 
 .dashboard-page img {
-    margin-top: 10px;
+    display: block;
+    margin: 0 auto 15px;
     width: 200px;
     height: 200px;
 }
 
-.dashboard-page .user-info {
-    margin: 0 auto;
-    text-align: left;
-    width: fit-content;
-}
-
-.dashboard-page .qr-title {
-    margin-bottom: 5px;
-    margin-top: 30px;
-}
-
 .dashboard-page #countdown {
+    margin-top: 15px;
+    font-weight: bold;
+}
+
+.dashboard-page .countdown-number {
+    color: #C8102E;
+    font-weight: bold;
+}
+
+.dashboard-page .user-info {
+    margin-top: 20px;
+    text-align: left;
+}
+
+.dashboard-page .user-info p {
+    margin: 8px 0;
+}
+
+.dashboard-page .history-header {
+    margin-bottom: 15px;
+}
+
+.dashboard-page .toggle-button {
+    background-color: #6c757d;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 16px;
+    cursor: pointer;
+    font-size: 0.9em;
     margin-top: 10px;
-    font-weight: bold;
 }
 
-.countdown-number {
-    color: #007bff;
-    font-weight: bold;
+.dashboard-page .toggle-button:hover {
+    background-color: #5a6268;
 }
 
-
-.dashboard-page .last-access-title {
-    margin-bottom: 5px;
-}
-
-.dashboard-page .last-access-value {
-    margin-top: 0;
-}
-
-.dashboard-page #history-list {
+.dashboard-page .history-list {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
     display: none;
-    margin-top: 10px;
 }
 
-.dashboard-page a {
-    display: inline-block;
+.dashboard-page .history-list li {
+    padding: 8px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.dashboard-page .history-list li:last-child {
+    border-bottom: none;
+}
+
+.dashboard-page .logout-button,
+.admin-page .logout-button {
+    display: block;
+    text-align: center;
     margin-top: 20px;
     padding: 10px 20px;
-    text-decoration: none;
-    background-color: #007bff;
+    background-color: #C8102E;
     color: white;
     border-radius: 4px;
+    text-decoration: none;
     transition: background-color 0.2s;
 }
 
-.dashboard-page a:hover {
-    background-color: #0056b3;
+.dashboard-page .logout-button:hover,
+.admin-page .logout-button:hover {
+    background-color: #9e0817;
 }
 
 /* ========== REGISTER PAGE STYLES ========== */
 .register-page {
-    padding: 1em;
-    display: flex;
-    justify-content: center;
-    flex-direction: column;
-    align-items: center;
     background-color: #f2f6fa;
+    padding: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 5vh;
 }
 
-.register-page h2, 
-.register-page p {
+.register-page .main-container {
+    background-color: white;
+    padding: 40px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 450px;
+    margin-top: 5vh;
+}
+
+.register-page h2 {
     text-align: center;
+    margin-bottom: 20px;
+    color: #333;
 }
 
 .register-page form {
     max-width: 400px;
     width: 100%;
+    margin: 0 auto;
 }
 
 .register-page label {
     display: block;
     text-align: left;
-    margin-bottom: 5px;
+    margin-bottom: 8px;
     font-weight: normal;
 }
 
@@ -109,43 +179,41 @@ body {
 .register-page select {
     display: block;
     width: 100%;
-    padding: 8px;
-    margin-bottom: 10px;
+    padding: 10px;
+    margin-bottom: 15px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
     box-sizing: border-box;
+    font-size: 14px;
+    transition: border-color 0.2s ease;
 }
 
-.register-page .password-container {
-    position: relative;
+.register-page input:focus,
+.register-page select:focus {
+    border-color: #C8102E;
+    outline: none;
 }
 
-.register-page .toggle-password {
-    position: absolute;
-    top: 50%;
-    right: 10px;
-    transform: translateY(-50%);
-    cursor: pointer;
-    width: 20px;
-    height: 20px;
-}
 
 .register-page input[type="submit"] {
-    background-color: #007bff;
+    background-color: #C8102E;
     color: white;
     border: none;
     border-radius: 4px;
-    padding: 10px 20px;
+    padding: 12px;
     cursor: pointer;
     width: 100%;
+    margin-top: 10px;
 }
 
 .register-page input[type="submit"]:hover {
-    background-color: #0056b3;
+    background-color: #9e0817;
 }
 
 .register-page .redirect-link {
-    margin-top: 10px;
-    font-size: 14px;
     text-align: center;
+    margin-top: 20px;
+    font-size: 14px;
 }
 
 .register-page .redirect-link a {
@@ -162,38 +230,88 @@ body {
     background-color: #5a6268;
 }
 
-/* ========== LOGIN STYLES ========== */
-.login-page{
-    padding: 1em;
+.register-page .password-container {
+    position: relative;
+}
+
+.register-page .toggle-password {
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    transform: translateY(-50%);
+    cursor: pointer;
+    width: 20px;
+    height: 20px;
+}
+
+.register-page .error {
+    color: red;
+    font-size: 0.9em;
+    margin-top: -8px;
+    margin-bottom: 8px;
+}
+
+#admin-key-container {
+    margin-top: 15px;
+    transition: all 0.3s ease;
+}
+
+/* ========== LOGIN PAGE STYLES ========== */
+.login-page {
+    background-color: #f2f6fa;
+    padding: 0;
+    min-height: 100vh;
     display: flex;
+    align-items: flex-start;
     justify-content: center;
-    flex-direction: column;
-    align-items: center;
+    padding-top: 5vh;
+}
+
+.login-page .main-container {
+    background-color: white;
+    padding: 40px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 450px;
+    margin-top: 5vh;
 }
 
 .login-page h2,
-.login-page p{
+.login-page p {
     text-align: center;
 }
 
-.login-page form{
+.login-page form {
     max-width: 400px;
     width: 100%;
+    margin: 0 auto;
 }
 
-.login-page label{
+.login-page label {
     display: block;
     text-align: left;
     margin-bottom: 5px;
     font-weight: normal;
 }
 
-.login-page input{
+.login-page input,
+.login-page select {
     display: block;
     width: 100%;
-    padding: 8px;
-    margin-bottom: 10px;
+    padding: 10px;
+    margin-bottom: 15px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
     box-sizing: border-box;
+    font-size: 14px;
+    transition: border-color 0.2s ease;
+}
+
+.login-page input:focus,
+.login-page select:focus {
+    border-color: #C8102E;
+    outline: none;
 }
 
 .password-container {
@@ -214,23 +332,24 @@ body {
     background-color: #f8d7da;
     color: #721c24;
     padding: 10px;
-    margin: 10px 0;
+    margin: 10px auto;
     border-radius: 5px;
-    width: 100%;
+    width: calc(100% - 40px);
     max-width: 400px;
     text-align: center;
 }
 
-.login-page .redirect-link{
+.login-page .redirect-link {
     margin-top: 10px;
     font-size: 14px;
+    text-align: center;
 }
 
 .login-page .redirect-link a {
     display: inline-block;
     padding: 10px 20px;
     text-decoration: none;
-    background-color: #6c757d; 
+    background-color: #6c757d;
     color: white;
     border-radius: 4px;
     transition: background-color 0.2s;
@@ -248,16 +367,17 @@ body {
 }
 
 input[type="submit"] {
-    background-color: #007bff;
+    background-color: #C8102E;
     color: white;
     border: none;
     border-radius: 4px;
     padding: 10px 20px;
     cursor: pointer;
+    width: 100%;
 }
 
 input[type="submit"]:hover {
-    background-color: #0056b3;
+    background-color: #9e0817;
 }
 
 /* ========== ADMINISTRATOR PAGE STYLES ========== */
@@ -274,6 +394,7 @@ input[type="submit"]:hover {
 .page-title {
     text-align: center;
     margin-bottom: 30px;
+    color: #C8102E;
 }
 
 .section-title {
@@ -307,7 +428,7 @@ input[type="submit"]:hover {
     display: inline-block;
     padding: 10px 20px;
     margin: 10px 5px 0 0;
-    background-color: #007bff;
+    background-color: #C8102E;
     color: white;
     text-decoration: none;
     font-weight: 500;
@@ -316,8 +437,9 @@ input[type="submit"]:hover {
 }
 
 .button:hover {
-    background-color: #0056b3;
+    background-color: #9e0817;
 }
+
 
 #admin-key-container {
     margin-top: 15px;
@@ -332,7 +454,7 @@ input[type="submit"]:hover {
 }
 
 
-/* ========== FULL LOGS PAGE STYLES ========== */
+/* ========== FULL LOGS AND FULL USERS PAGE STYLES ========== */
 .logs-table {
     width: 100%;
     border-collapse: collapse;
@@ -365,7 +487,7 @@ input[type="submit"]:hover {
 
 .button {
     display: inline-block;
-    background-color: #007bff;
+    background-color: #C8102E;
     color: white;
     padding: 10px 20px;
     margin-top: 20px;
@@ -375,7 +497,7 @@ input[type="submit"]:hover {
 }
 
 .button:hover {
-    background-color: #0056b3;
+    background-color: #9e0817;
 }
 
 .back-button-container {
@@ -385,24 +507,20 @@ input[type="submit"]:hover {
 
 /* ========== MEDIA QUERIES ========== */
 @media (max-width: 500px) {
-    .login-page input,
-    .register-page input,
-    .register-page select {
-        font-size: 1em;
-    }
 
     .toggle-password {
         width: 18px;
         height: 18px;
     }
 
-    .dashboard-page img {
-        width: 150px;
-        height: 150px;
+    .register-page .toggle-password {
+        width: 18px;
+        height: 18px;
     }
 
-    .dashboard-page a {
-        width: 80%;
+    .login-page input,
+    .login-page select {
+        font-size: 1em;
     }
 
     .register-page input,
@@ -410,9 +528,24 @@ input[type="submit"]:hover {
         font-size: 1em;
     }
 
-    .register-page .toggle-password {
-        width: 18px;
-        height: 18px;
+    .dashboard-page .main-container {
+        padding: 20px;
+        margin-top: 20px;
     }
+    
+    .dashboard-page img {
+        width: 150px;
+        height: 150px;
+    }
+    
+    .dashboard-page .history-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .dashboard-page .toggle-button {
+        margin-top: 10px;
+    }
+    
 }
 
