@@ -68,7 +68,6 @@ def verify_qr(content, expiration_seconds=30):
         }
 
     email, role = user
-    #Add your role-based permission check here if needed
 
     grace_period = 5  #seconds, for clock skew
     if now - timestamp > expiration_seconds+grace_period:

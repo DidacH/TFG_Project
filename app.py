@@ -8,6 +8,7 @@ from io import BytesIO, StringIO
 from PIL import Image
 import csv
 from datetime import datetime
+import time
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'  #Replace with a random secure key!
@@ -124,6 +125,15 @@ def dashboard():
     conn = get_db_connection()
     user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
 
+    last_qr_time = int(user['last_qr_time']) if user and user['last_qr_time'] else 0
+
+    #Calculate how many seconds are left before QR expires
+    qr_lifetime = 30  #seconds
+    now = int(time.time())
+    remaining = qr_lifetime - (now - last_qr_time)
+    if remaining < 0:
+        remaining = 0
+
     if not user:
         conn.close()
         return redirect(url_for('login'))
@@ -156,9 +166,10 @@ def dashboard():
         email=user['email'],
         role=user['role'],
         qr_base64=qr_base64,
-        last_qr_time=user['last_qr_time'],
+        last_qr_time=last_qr_time,
         last_access=(f"{last_access['access_time']} / {last_access['room']}" if last_access else None),
-        history=[f"{row['access_time']} / {row['room']}" for row in history] if history else []
+        history=[f"{row['access_time']} / {row['room']}" for row in history] if history else [],
+        remaining=remaining
     )
 
     

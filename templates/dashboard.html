@@ -4,16 +4,19 @@
     <title>Dashboard</title>
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/style.css') }}">
     <script>
-        const qrGeneratedAt = parseInt("{{ last_qr_time }}");
+        
+        let remaining = parseInt("{{ remaining }}");
         const refreshInterval = 30;
-        let remaining = refreshInterval - (Math.floor(Date.now() / 1000) - qrGeneratedAt);
-
-        if (remaining < 0) remaining = 30;
 
         function startCountdown() {
             const countdownNumber = document.getElementById("countdown-number");
             countdownNumber.textContent = remaining;
-
+            
+            if (remaining <= 0) {
+                fetchNewQR();
+                remaining = refreshInterval;
+            }
+            
             setInterval(() => {
                 remaining--;
                 if (remaining <= 0) {
@@ -37,13 +40,13 @@
                 });
         }
 
-        window.onload = startCountdown;
-
         function toggleHistory() {
             const list = document.getElementById("history-list");
             const isHidden = window.getComputedStyle(list).display === "none";
             list.style.display = isHidden ? "block" : "none";
         }
+
+        window.onload = startCountdown;
     </script>
 </head>
 
@@ -55,7 +58,7 @@
             <h3 class="section-title centered-title">Your QR Code</h3>
             <img id="qr-img" src="data:image/png;base64,{{ qr_base64 }}" alt="User QR Code">
             <div id="countdown" class="centered-text">
-                QR refreshes in <span id="countdown-number" class="countdown-number">30</span> seconds
+                QR refreshes in <span id="countdown-number" class="countdown-number">{{ remaining }}</span> seconds.
             </div>
             
             <div class="user-info centered-text">
