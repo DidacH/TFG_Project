@@ -1,7 +1,13 @@
 import sqlite3
+from dotenv import load_dotenv
+import os
+
+load_dotenv()  #Load environment variables from .env file
+
+DATABASE = os.getenv("DATABASE_PATH", "instance/database.db")
 
 def view_users():
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM users")
     users = cursor.fetchall()
@@ -10,7 +16,7 @@ def view_users():
     conn.close()
 
 def view_logs():
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM logs")
     logs = cursor.fetchall()

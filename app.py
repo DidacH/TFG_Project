@@ -9,11 +9,25 @@ from PIL import Image
 import csv
 from datetime import datetime
 import time
+from dotenv import load_dotenv
+import os
+
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'  #Replace with a random secure key!
+load_dotenv()  #Load environment variables from .env file
 
-DATABASE = 'users.db'
+app.secret_key = os.getenv("SECRET_KEY")
+
+app.config.update(
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax'
+)
+
+DATABASE = os.getenv("DATABASE_PATH", "instance/database.db")
+ADMIN_REGISTRATION_KEY = os.getenv("ADMIN_KEY")
+SIGNATURE_KEY = os.getenv("SIGNATURE_KEY").encode('utf-8')
+
 
 #Utility function
 def get_db_connection():
@@ -57,7 +71,6 @@ def login():
     
     return render_template('login.html')
 
-ADMIN_REGISTRATION_KEY = 'admin'
 
 #Registration page
 @app.route('/register', methods=['GET', 'POST'])
@@ -103,7 +116,7 @@ def register():
                 user_id = generate_unique_id()
 
                 #Generate first QR code for the user and save timestamp
-                qrimage, last_qr_time = generate_qr(user_id)
+                qrimage, last_qr_time = generate_qr(user_id, SIGNATURE_KEY)
 
                 registered_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -186,7 +199,7 @@ def refresh_qr():
         return {"error": "User not found"}, 404
 
     #Generate new QR
-    new_qr, timestamp = generate_qr(user_id)
+    new_qr, timestamp = generate_qr(user_id, SIGNATURE_KEY)
 
     #Update DB
     conn.execute("UPDATE users SET qr_image = ?, last_qr_time = ? WHERE id = ?", (new_qr, timestamp, user_id))

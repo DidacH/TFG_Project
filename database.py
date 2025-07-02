@@ -1,16 +1,23 @@
 import sqlite3
 import bcrypt
 from datetime import datetime
+from dotenv import load_dotenv
+import os
+
+load_dotenv()  #Load environment variables from .env file
+
+DATABASE = os.getenv("DATABASE_PATH", "instance/database.db")
+
 
 def delete_table():
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
     cursor.execute('DROP TABLE IF EXISTS users')
     conn.commit()
     conn.close()
 
 def init_db():
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
@@ -28,7 +35,7 @@ def init_db():
     conn.close()
 
 def init_logs_table():
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS logs (
@@ -47,7 +54,7 @@ def init_logs_table():
     conn.close()
 
 def delete_logs():
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
     cursor.execute('DROP TABLE IF EXISTS logs')
     conn.commit()
@@ -60,7 +67,7 @@ def check_password(password, hashed):
     return bcrypt.checkpw(password.encode(), hashed)
 
 def save_user(id, name, email, password, role, qr_image_bytes, timestamp, registered_at):
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
     hashed_pw = hash_password(password)
     cursor.execute('''
@@ -71,7 +78,7 @@ def save_user(id, name, email, password, role, qr_image_bytes, timestamp, regist
     conn.close()
 
 def update_qr_image(user_id, qr_bytes):
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute("UPDATE users SET qr_image=?, last_qr_time=? WHERE id=?", (qr_bytes, now, user_id))
@@ -80,7 +87,7 @@ def update_qr_image(user_id, qr_bytes):
 
 
 def get_user_by_email(email):
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
     cursor.execute('''
         SELECT * FROM users WHERE email = ?
@@ -104,11 +111,3 @@ def get_user_by_email(email):
 
 def verify_password(stored_hash, input_password):
     return stored_hash == hash_password(input_password)
-
-
-if __name__ == "__main__":
-
-    delete_table()
-    init_db()
-    delete_logs()
-    init_logs_table()

@@ -2,6 +2,13 @@ from QR_generation_validation import verify_qr
 from pyzbar.pyzbar import decode, ZBarSymbol
 import cv2
 import sqlite3
+from dotenv import load_dotenv
+import os
+
+load_dotenv()  #Load environment variables from .env file
+
+SIGNATURE_KEY = os.getenv("SIGNATURE_KEY")
+DATABASE = os.getenv("DATABASE_PATH", "instance/database.db")
 
 def scan_qr():
     cam = cv2.VideoCapture(0)
@@ -39,12 +46,12 @@ while True:
         break
 
     print("QR Code Content:", result)
-    data = verify_qr(result)
+    data = verify_qr(result, SIGNATURE_KEY)
 
     room = "room_1"
 
     #Log the attempt
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
     cursor.execute('''
         INSERT INTO logs (user_id, email, role, room, access_time, entry_allowed, reason)

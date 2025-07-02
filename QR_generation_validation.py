@@ -5,12 +5,11 @@ import io
 from datetime import datetime
 import sqlite3
 
-SECRET_KEY = b"secret_key" #Replace with a secure key!
 
-def generate_qr(user_id):
+def generate_qr(user_id, secret_key):
     timestamp = int(time.time())  #current UNIX time
     message = f"{user_id}:{timestamp}"
-    signature = hmac.new(SECRET_KEY, message.encode(), hashlib.sha256).hexdigest()
+    signature = hmac.new(secret_key, message.encode(), hashlib.sha256).hexdigest()
     content = f"{user_id}:{timestamp}:{signature}"
     
     img = qrcode.make(content)
@@ -23,8 +22,9 @@ def generate_qr(user_id):
     return img_bytes, timestamp
 
 
-def verify_qr(content, expiration_seconds=30):
+def verify_qr(content, secret_key):
     now = int(time.time())
+    expiration_seconds = 30  #seconds
     
     try:
         user_id, timestamp_str, received_signature = content.split(":")
@@ -40,7 +40,7 @@ def verify_qr(content, expiration_seconds=30):
         }
 
     message = f"{user_id}:{timestamp}"
-    expected_signature = hmac.new(SECRET_KEY, message.encode(), hashlib.sha256).hexdigest()
+    expected_signature = hmac.new(secret_key, message.encode(), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(received_signature, expected_signature):
         return {
             'valid': False,
