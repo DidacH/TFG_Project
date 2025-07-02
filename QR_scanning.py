@@ -7,7 +7,7 @@ from database import get_db_connection
 
 load_dotenv()  #Load environment variables from .env file
 
-SIGNATURE_KEY = os.getenv("SIGNATURE_KEY")
+SIGNATURE_KEY = os.getenv("SIGNATURE_KEY").encode('utf-8')  #Ensure the key is in bytes format
 
 def scan_qr():
     cam = cv2.VideoCapture(0)
@@ -70,7 +70,7 @@ while True:
 
     #Notify user
     if data['valid']:
-        print("QR Code scanned successfully!")
+        print("Access Granted!")
     else:
         print(f"Invalid QR Code: {data['reason']}")
 

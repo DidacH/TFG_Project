@@ -4,6 +4,7 @@ import time
 import io
 from datetime import datetime
 import sqlite3
+from database import get_db_connection
 
 
 def generate_qr(user_id, secret_key):
@@ -52,9 +53,11 @@ def verify_qr(content, secret_key):
         }
 
     #Fetch user info if signature valid
-    conn = sqlite3.connect("users.db")
-    cursor = conn.cursor()
-    user = cursor.execute("SELECT email, role FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT email, role FROM users WHERE id = %s", (user_id,))
+    user = cur.fetchone()
+    cur.close()
     conn.close()
 
     if user is None:
