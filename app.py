@@ -1,8 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, Response
-import sqlite3
 from QR_generation_validation import generate_qr
 import uuid
-from database import save_user, check_password
+from database import save_user, check_password, get_db_connection
 import base64
 from io import BytesIO, StringIO
 from PIL import Image
@@ -24,16 +23,10 @@ app.config.update(
     SESSION_COOKIE_SAMESITE='Lax'
 )
 
-DATABASE = os.getenv("DATABASE_PATH", "instance/database.db")
 ADMIN_REGISTRATION_KEY = os.getenv("ADMIN_KEY")
 SIGNATURE_KEY = os.getenv("SIGNATURE_KEY").encode('utf-8')
 
 
-#Utility function
-def get_db_connection():
-    conn = sqlite3.connect(DATABASE)
-    conn.row_factory = sqlite3.Row
-    return conn
 
 def generate_unique_id():
     return str(uuid.uuid4())
@@ -48,11 +41,14 @@ def home():
 def login():
     if request.method == 'POST':
         email = request.form['email'].strip()
-
         introduced_password = request.form['password'].strip()
 
         conn = get_db_connection()
-        user = conn.execute('SELECT * FROM users WHERE email = ?', (email,)).fetchone()
+        cur = conn.cursor()
+        
+        cur.execute('SELECT * FROM users WHERE email = %s', (email,))
+        user = cur.fetchone()
+        cur.close()
         conn.close()
 
         if user:
@@ -83,10 +79,8 @@ def register():
         email = request.form.get('email', '').strip()
         password = request.form.get('password', '').strip()
         role = request.form['role']
-
         admin_key = request.form.get('admin_key', '')
         
-
         #Save entered values so user doesn't need to retype
         values = {'name': name, 'email': email, 'role': role, 'admin_key': admin_key}
 
@@ -107,25 +101,25 @@ def register():
 
         if not errors:
             conn = get_db_connection()
-            cursor = conn.execute('SELECT * FROM users WHERE email = ?', (email,))
-
-            if cursor.fetchone():
+            cur = conn.cursor()
+            
+            cur.execute('SELECT * FROM users WHERE email = %s', (email,))
+            
+            if cur.fetchone():
                 errors['email'] = "This email is already registered."
             else:
-                
                 user_id = generate_unique_id()
-
-                #Generate first QR code for the user and save timestamp
                 qrimage, last_qr_time = generate_qr(user_id, SIGNATURE_KEY)
-
                 registered_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+                
                 save_user(user_id, name, email, password, role, qrimage, last_qr_time, registered_at)
-
+                
+                cur.close()
+                conn.close()
                 return redirect(url_for('login'))
-
+            
+            cur.close()
             conn.close()
-
 
     return render_template('register.html', errors=errors, values=values)
 
@@ -136,7 +130,15 @@ def dashboard():
     user_id = session.get('user_id')
 
     conn = get_db_connection()
-    user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+    cur = conn.cursor()
+    
+    cur.execute('SELECT * FROM users WHERE id = %s', (user_id,))
+    user = cur.fetchone()
+
+    if not user:
+        cur.close()
+        conn.close()
+        return redirect(url_for('login'))
 
     last_qr_time = int(user['last_qr_time']) if user and user['last_qr_time'] else 0
 
@@ -147,10 +149,6 @@ def dashboard():
     if remaining < 0:
         remaining = 0
 
-    if not user:
-        conn.close()
-        return redirect(url_for('login'))
-
     #Convert BLOB QR image to base64 string
     image = Image.open(BytesIO(user['qr_image']))
     buffer = BytesIO()
@@ -158,19 +156,22 @@ def dashboard():
     qr_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
 
     #Fetch last successful access
-    last_access = conn.execute('''
+    cur.execute('''
         SELECT access_time, room FROM logs 
-        WHERE user_id = ? AND entry_allowed = 1 
+        WHERE user_id = %s AND entry_allowed = 1 
         ORDER BY access_time DESC LIMIT 1
-    ''', (user_id,)).fetchone()
+    ''', (user_id,))
+    last_access = cur.fetchone()
 
     #Fetch all successful accesses
-    history = conn.execute('''
+    cur.execute('''
         SELECT access_time, room FROM logs 
-        WHERE user_id = ? AND entry_allowed = 1 
+        WHERE user_id = %s AND entry_allowed = 1 
         ORDER BY access_time DESC
-    ''', (user_id,)).fetchall()
+    ''', (user_id,))
+    history = cur.fetchall()
 
+    cur.close()
     conn.close()
 
     return render_template(
@@ -193,48 +194,66 @@ def refresh_qr():
         return {"error": "Unauthorized"}, 401
 
     conn = get_db_connection()
-    user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+    cur = conn.cursor()
+    
+    cur.execute('SELECT * FROM users WHERE id = %s', (user_id,))
+    user = cur.fetchone()
+    
     if not user:
+        cur.close()
         conn.close()
         return {"error": "User not found"}, 404
 
     #Generate new QR
     new_qr, timestamp = generate_qr(user_id, SIGNATURE_KEY)
 
-    #Update DB
-    conn.execute("UPDATE users SET qr_image = ?, last_qr_time = ? WHERE id = ?", (new_qr, timestamp, user_id))
+    cur.execute("UPDATE users SET qr_image = %s, last_qr_time = %s WHERE id = %s", 
+               (new_qr, timestamp, user_id))
     conn.commit()
-    conn.close()
-
+    
     #Return new QR as base64
     qr_base64 = base64.b64encode(new_qr).decode("utf-8")
+    
+    cur.close()
+    conn.close()
+    
     return {"qr_base64": qr_base64}
 
 def get_last3_logs():
     conn = get_db_connection()
-    logs = conn.execute("SELECT * FROM logs ORDER BY access_time DESC LIMIT 3").fetchall()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM logs ORDER BY access_time DESC LIMIT 3")
+    logs = cur.fetchall()
+    cur.close()
     conn.close()
     return logs
 
 def get_all_logs():
     conn = get_db_connection()
-    logs = conn.execute("SELECT * FROM logs ORDER BY access_time DESC").fetchall()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM logs ORDER BY access_time DESC")
+    logs = cur.fetchall()
+    cur.close()
     conn.close()
     return logs
 
 def get_last_3_users():
     conn = get_db_connection()
-    users = conn.execute('SELECT * FROM users ORDER BY registered_at DESC LIMIT 3').fetchall()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM users ORDER BY registered_at DESC LIMIT 3')
+    users = cur.fetchall()
+    cur.close()
     conn.close()
     return users
-
 
 def get_all_users():
     conn = get_db_connection()
-    users = conn.execute('SELECT * FROM users ORDER BY registered_at DESC').fetchall()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM users ORDER BY registered_at DESC')
+    users = cur.fetchall()
+    cur.close()
     conn.close()
     return users
-
 
 @app.route('/administrator')
 def administrator():
@@ -246,7 +265,10 @@ def administrator():
     last_3_users = get_last_3_users()
 
     conn = get_db_connection()
-    user = conn.execute('SELECT name FROM users WHERE id = ?', (user_id,)).fetchone()
+    cur = conn.cursor()
+    cur.execute('SELECT name FROM users WHERE id = %s', (user_id,))
+    user = cur.fetchone()
+    cur.close()
     conn.close()
 
     name = user['name'] if user else "Administrator"
@@ -285,7 +307,6 @@ def download_logs():
 def full_logs():
     logs = get_all_logs()
     return render_template('full_logs.html', logs=logs)
-
 
 @app.route('/full_users')
 def full_users():

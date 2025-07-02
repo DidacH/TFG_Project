@@ -1,27 +1,26 @@
-import sqlite3
 from dotenv import load_dotenv
 import os
+from database import get_db_connection
 
-load_dotenv()  #Load environment variables from .env file
-
-DATABASE = os.getenv("DATABASE_PATH", "instance/database.db")
 
 def view_users():
-    conn = sqlite3.connect(DATABASE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users")
-    users = cursor.fetchall()
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM users")
+    users = cur.fetchall()
     for user in users:
         print(user)
+    cur.close()
     conn.close()
 
 def view_logs():
-    conn = sqlite3.connect(DATABASE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM logs")
-    logs = cursor.fetchall()
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM logs")
+    logs = cur.fetchall()
     for log in logs:
         print(log)
+    cur.close()
     conn.close()
 
 if __name__ == "__main__":

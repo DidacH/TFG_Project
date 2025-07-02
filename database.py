@@ -1,45 +1,53 @@
-import sqlite3
 import bcrypt
 from datetime import datetime
 from dotenv import load_dotenv
 import os
+import psycopg2
+from psycopg2 import extras
 
 load_dotenv()  #Load environment variables from .env file
 
-DATABASE = os.getenv("DATABASE_PATH", "instance/database.db")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
+
+def get_db_connection():
+    conn = psycopg2.connect(DATABASE_URL)
+    conn.cursor_factory = extras.DictCursor
+    return conn
 
 def delete_table():
-    conn = sqlite3.connect(DATABASE)
-    cursor = conn.cursor()
-    cursor.execute('DROP TABLE IF EXISTS users')
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('DROP TABLE IF EXISTS users CASCADE')
     conn.commit()
+    cur.close()
     conn.close()
 
 def init_db():
-    conn = sqlite3.connect(DATABASE)
-    cursor = conn.cursor()
-    cursor.execute('''
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             email TEXT NOT NULL UNIQUE,
-            password BLOB NOT NULL,
+            password BYTEA NOT NULL,
             role TEXT NOT NULL,
-            qr_image BLOB NOT NULL,
+            qr_image BYTEA NOT NULL,
             last_qr_time TEXT NOT NULL,
             registered_at TEXT NOT NULL
         )
     ''')
     conn.commit()
+    cur.close()
     conn.close()
 
 def init_logs_table():
-    conn = sqlite3.connect(DATABASE)
-    cursor = conn.cursor()
-    cursor.execute('''
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id TEXT NOT NULL,
             email TEXT,
             role TEXT,
@@ -51,13 +59,15 @@ def init_logs_table():
         )
     ''')
     conn.commit()
+    cur.close()
     conn.close()
 
 def delete_logs():
-    conn = sqlite3.connect(DATABASE)
-    cursor = conn.cursor()
-    cursor.execute('DROP TABLE IF EXISTS logs')
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('DROP TABLE IF EXISTS logs CASCADE')
     conn.commit()
+    cur.close()
     conn.close()
 
 def hash_password(password):
@@ -67,32 +77,33 @@ def check_password(password, hashed):
     return bcrypt.checkpw(password.encode(), hashed)
 
 def save_user(id, name, email, password, role, qr_image_bytes, timestamp, registered_at):
-    conn = sqlite3.connect(DATABASE)
-    cursor = conn.cursor()
+    conn = get_db_connection()
+    cur = conn.cursor()
     hashed_pw = hash_password(password)
-    cursor.execute('''
+    cur.execute('''
         INSERT INTO users (id, name, email, password, role, qr_image, last_qr_time, registered_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
     ''', (id, name, email, hashed_pw, role, qr_image_bytes, timestamp, registered_at))
     conn.commit()
+    cur.close()
     conn.close()
 
 def update_qr_image(user_id, qr_bytes):
-    conn = sqlite3.connect(DATABASE)
-    cursor = conn.cursor()
+    conn = get_db_connection()
+    cur = conn.cursor()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    cursor.execute("UPDATE users SET qr_image=?, last_qr_time=? WHERE id=?", (qr_bytes, now, user_id))
+    cur.execute("UPDATE users SET qr_image=%s, last_qr_time=%s WHERE id=%s", (qr_bytes, now, user_id))
     conn.commit()
+    cur.close()
     conn.close()
 
 
 def get_user_by_email(email):
-    conn = sqlite3.connect(DATABASE)
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT * FROM users WHERE email = ?
-    ''', (email,))
-    row = cursor.fetchone()
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM users WHERE email = %s', (email,))
+    row = cur.fetchone()
+    cur.close()
     conn.close()
     
     if row is None:
@@ -105,7 +116,7 @@ def get_user_by_email(email):
         'password': row[3],
         'role': row[4],
         'qr_image': row[5],
-        "last_qr_time": row[6],
+        'last_qr_time': row[6],
     }
 
 
