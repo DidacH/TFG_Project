@@ -74,6 +74,8 @@ def hash_password(password):
      return bcrypt.hashpw(password.encode(), bcrypt.gensalt())
 
 def check_password(password, hashed):
+    if isinstance(hashed, memoryview):
+        hashed = bytes(hashed)
     return bcrypt.checkpw(password.encode(), hashed)
 
 def save_user(id, name, email, password, role, qr_image_bytes, timestamp, registered_at):
