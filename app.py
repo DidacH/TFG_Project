@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, Response
 from QR_generation_validation import generate_qr
 import uuid
-from database import save_user, check_password, get_db_connection
+from database import save_user, check_password, get_db_connection, get_user_by_email, update_user, delete_user_by_email
 import base64
 from io import BytesIO, StringIO
 from PIL import Image
@@ -337,6 +337,100 @@ def download_users():
         mimetype='text/csv; charset=utf-8',
         headers={'Content-Disposition': 'attachment; filename=users.csv'}
     )
+
+
+@app.route('/edit-user-redirect', methods=['POST'])
+def edit_user_redirect():
+    email = request.form.get('edit_email', '').strip()
+    if not email:
+        return render_template('administrator.html',
+                            name=session.get('name', 'Administrator'),
+                            last_3_logs=get_last3_logs(),
+                            last_3_users=get_last_3_users(),
+                            edit_redirect_error="No email provided",
+                            edit_email=email)
+    
+    user = get_user_by_email(email)
+    if not user:
+        return render_template('administrator.html',
+                            name=session.get('name', 'Administrator'),
+                            last_3_logs=get_last3_logs(),
+                            last_3_users=get_last_3_users(),
+                            edit_redirect_error="User not found",
+                            edit_email=email)
+
+    session['edit_user_email'] = email
+    return redirect(url_for('edit_user_form'))
+
+
+@app.route('/edit-user', methods=['GET', 'POST'])
+def edit_user_form():
+    email = session.get('edit_user_email')
+    if not email:
+        return redirect(url_for('administrator'))
+    
+    user = get_user_by_email(email)
+    if not user:
+        return redirect(url_for('administrator'))
+
+    message = None
+    if request.method == 'POST':
+        if request.form.get('action') == 'apply':
+            new_name = request.form.get('name', '').strip()
+            new_email = request.form.get('email', '').strip()
+            new_role = request.form.get('role', '').strip()
+            
+            if not all([new_name, new_email, new_role]):
+                message = ("error", "All fields are required")
+            else:
+                try:
+                    update_user(email, new_name, new_email, new_role)
+                    session['edit_user_email'] = new_email
+                    message = ("success", "User updated successfully")
+                except Exception as e:
+                    message = ("error", f"Error updating user: {str(e)}")
+    
+    user = get_user_by_email(session.get('edit_user_email'))
+    if not user:
+        return redirect(url_for('administrator'))
+    
+    return render_template("edit_user.html", 
+                         user=user,
+                         message=message)
+
+
+
+@app.route('/delete-user', methods=['POST'])
+def delete_user():
+    email = request.form.get('delete_email', '').strip()
+    error = None
+    
+    if not email:
+        error = "No email provided"
+    else:
+        user = get_user_by_email(email)
+        if not user:
+            error = "User not found"
+        else:
+            delete_user_by_email(email)
+            error = "User deleted successfully"
+    
+    #Pass the error to administrator template
+    last_3_logs = get_last3_logs()
+    last_3_users = get_last_3_users()
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT name FROM users WHERE id = %s', (session.get('user_id'),))
+    user = cur.fetchone()
+    cur.close()
+    conn.close()
+    
+    return render_template('administrator.html', 
+                         name=user['name'] if user else "Administrator",
+                         last_3_logs=last_3_logs,
+                         last_3_users=last_3_users,
+                         delete_error=error,
+                         delete_email=email)
 
 
 #Logout
