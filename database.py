@@ -121,6 +121,27 @@ def get_user_by_email(email):
         'last_qr_time': row[6],
     }
 
+def update_user(original_email, new_name, new_email, new_role):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE users
+        SET name = %s, email = %s, role = %s
+        WHERE email = %s
+    ''', (new_name, new_email, new_role, original_email))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    
+
+def delete_user_by_email(email):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM users WHERE email = %s', (email,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
 
 def verify_password(stored_hash, input_password):
     return stored_hash == hash_password(input_password)
