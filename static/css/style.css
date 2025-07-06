@@ -453,6 +453,40 @@ input[type="submit"]:hover {
     font-weight: normal;
 }
 
+.admin-page .form-group {
+    margin-bottom: 15px;
+}
+
+.admin-page .form-group label {
+    display: block;
+    margin-bottom: 5px;
+}
+
+.admin-page .form-group input,
+.admin-page .form-group select {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.admin-page .button.secondary {
+    background-color: #6c757d;
+    margin-left: 10px;
+}
+
+.admin-page .button.secondary:hover {
+    background-color: #5a6268;
+}
+
+.flash-message {
+    background-color: #f8d7da;
+    color: #721c24;
+    padding: 10px;
+    margin-bottom: 20px;
+    border-radius: 4px;
+}
+
 
 /* ========== FULL LOGS AND FULL USERS PAGE STYLES ========== */
 .logs-table {
@@ -548,4 +582,3 @@ input[type="submit"]:hover {
     }
     
 }
-
