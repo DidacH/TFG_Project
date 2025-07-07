@@ -3,7 +3,6 @@ import hmac, hashlib
 import time
 import io
 from datetime import datetime
-import sqlite3
 from database import get_db_connection
 
 
