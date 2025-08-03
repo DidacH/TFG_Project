@@ -145,3 +145,9 @@ def delete_user_by_email(email):
 
 def verify_password(stored_hash, input_password):
     return stored_hash == hash_password(input_password)
+
+if __name__ == "__main__":
+    # Example usage
+    init_db()
+    init_logs_table()
+    print("Database initialized.")
