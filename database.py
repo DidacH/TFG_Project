@@ -49,7 +49,6 @@ def init_logs_table():
         CREATE TABLE IF NOT EXISTS logs (
             id SERIAL PRIMARY KEY,
             user_id TEXT NOT NULL,
-            email TEXT,
             role TEXT,
             room TEXT NOT NULL,
             access_time TEXT NOT NULL,
@@ -147,7 +146,13 @@ def verify_password(stored_hash, input_password):
     return stored_hash == hash_password(input_password)
 
 if __name__ == "__main__":
-    # Example usage
+    
+    #Tables creation
     init_db()
     init_logs_table()
     print("Database initialized.")
+
+    #Tables deletion
+    # delete_table()
+    # delete_logs()
+    # print("Tables deleted.")

@@ -53,11 +53,10 @@ while True:
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute('''
-        INSERT INTO logs (user_id, email, role, room, access_time, entry_allowed, reason)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO logs (user_id, role, room, access_time, entry_allowed, reason)
+        VALUES (%s, %s, %s, %s, %s, %s)
     ''', (
         data['user_id'],
-        data['email'],
         data['role'],
         room,
         data['access_time'],

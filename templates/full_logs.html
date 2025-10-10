@@ -13,7 +13,6 @@
             <thead>
                 <tr>
                     <th>User ID</th>
-                    <th>Email</th>
                     <th>Role</th>
                     <th>Access Time</th>
                     <th>Entry Allowed?</th>
@@ -25,7 +24,6 @@
                 {% for log in logs %}
                     <tr>
                         <td>{{ log.user_id }}</td>
-                        <td>{{ log.email }}</td>
                         <td>{{ log.role }}</td>
                         <td>{{ log.access_time }}</td>
                         <td>{{ 'Yes' if log.entry_allowed else 'No' }}</td>

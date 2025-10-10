@@ -15,7 +15,7 @@
             <ul class="log-list">
                 {% for log in last_3_logs %}
                     <li class="log-entry">
-                        <strong>User:</strong> {{ log.email }} |
+                        <strong>User:</strong> {{ log.user_id }} |
                         <strong>Role:</strong> {{ log.role }} |
                         <strong>Time:</strong> {{ log.access_time }} |
                         <strong>Entry Allowed?:</strong> {{ 'Yes' if log.entry_allowed else 'No' }} |
