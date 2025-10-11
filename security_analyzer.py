@@ -142,14 +142,13 @@ def send_anomaly_alert(log_entry, score):
             <p>An anomalous access log was recorded by the security model:</p>
             <ul>
                 <li><strong>User ID:</strong> {log_entry.get('user_id')}</li>
-                <li><strong>Email:</strong> {log_entry.get('email')}</li>
                 <li><strong>Role:</strong> {log_entry.get('role')}</li>
                 <li><strong>Area:</strong> {log_entry.get('area')}</li>
                 <li><strong>Access Time:</strong> {log_entry.get('access_time')}</li>
                 <li><strong>Entry Allowed:</strong> {'Yes' if log_entry.get('entry_allowed') else 'No'}</li>
                 <li><strong>Reason:</strong> {log_entry.get('reason')}</li>
             </ul>
-            <p><strong>Anomaly Score (lower is worse):</strong> {score:.4f}</p>
+            <p><strong>Risk Score (lower is worse):</strong> {score:.4f}</p>
             <p>Please review the logs immediately.</p>
         </body>
         </html>
@@ -172,3 +171,96 @@ def send_anomaly_alert(log_entry, score):
 # IMPORTANT: Aquesta crida hauria de ser en un punt d'inici (com ara el final de app.py)
 # o en una funció de càrrega per a que el model estigui a memòria.
 train_security_model()
+
+
+def fetch_all_logs():
+    """Obté tots els logs i dades d'usuari rellevants de la BD."""
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=extras.DictCursor)
+    
+    # Utilitza un JOIN per obtenir tota la informació necessària
+    cur.execute("""
+        SELECT 
+            l.access_time, l.area, l.entry_allowed, l.reason,
+            u.role, u.email, u.id AS user_id, u.registered_at
+        FROM logs l
+        JOIN users u ON l.user_id = u.id
+        ORDER BY l.access_time DESC
+    """)
+    logs = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    # Converteix els resultats directament a DataFrame
+    return pd.DataFrame(logs)
+
+
+def batch_analysis_deep_dive():
+    """
+    Realitza una anàlisi més profunda dels logs, ideal per a l'anàlisi diària/setmanal.
+    Aquesta anàlisi pot incloure la detecció de patrons de "Falsos Positius" (FP) o 
+    "Amenaces per Patrons de Múltiples Logs".
+    """
+    df_logs = fetch_all_logs()
+    if df_logs.empty:
+        print("No logs available for deep dive analysis.")
+        return
+    
+    # Assegura el format de temps
+    df_logs['access_time'] = pd.to_datetime(df_logs['access_time'])
+    df_logs = preprocess_data(df_logs.copy())
+
+    # --- Anàlisi d'Exemples de Patrons ---
+
+    # 1. Detecció de Patrons Anòmals per Usuari: 
+    # (Ex: usuari que només accedeix a la Sala_1, però de sobte intenta la Sala_3)
+    
+    # Reentrena amb un model més sensible o amb un altre algorisme (IsolationForest del 
+    # mòdul global ja s'ha entrenat a l'inici, el reutilitzarem per a consistència)
+    X_logs = df_logs[FEATURE_COLUMNS]
+    df_logs['deep_anomaly_score'] = model.decision_function(X_logs)
+    
+    # 2. Detecció d'Abús de Temps (Ex: Intent de molts accessos en poc temps)
+    
+    # Calcula el temps transcorregut (en segons) des de l'últim accés de cada usuari
+    df_logs['time_diff'] = df_logs.groupby('user_id')['access_time'].diff().dt.total_seconds().fillna(0)
+    
+    # Identifica entrades on la diferència de temps és molt petita (excepte 0, el primer log)
+    # LLINDAR_ABÚS: Menys de 5 minuts (300s) d'un mateix usuari a la mateixa sala 
+    # (podria indicar abús, a part del límit de 30s del QR)
+    df_logs['is_time_abuse'] = (df_logs['time_diff'] > 0) & (df_logs['time_diff'] < 300)
+    
+    # 3. Detecció de Falsos Positius del QR_Scanner: 
+    # (Ex: Logs amb QR invàlid per expiració, però amb un patró temporalment normal)
+    
+    # Els logs que han estat marcats com a 'expired' (pel validador del QR) però 
+    # la IA els va marcar com a 'Normal' (Score > -0.15) en l'anàlisi en temps real.
+    false_positives = df_logs[
+        (df_logs['reason'].str.contains('expired') & 
+         df_logs['deep_anomaly_score'] > ANOMALY_THRESHOLD)
+    ]
+
+    # --- Generació d'Informes (simulació) ---
+    report = {
+        'total_logs': len(df_logs),
+        'anomalous_logs': df_logs[df_logs['deep_anomaly_score'] < ANOMALY_THRESHOLD].shape[0],
+        'time_abuse_incidents': df_logs[df_logs['is_time_abuse']].shape[0],
+        'potential_false_positives': false_positives.shape[0]
+    }
+
+    print("\n--- DEEP DIVE BATCH ANALYSIS REPORT ---")
+    for key, value in report.items():
+        print(f"{key}: {value}")
+        
+    if report['potential_false_positives'] > 0:
+        print("\nPotential False Positives (Needs Admin Review to Mark as Safe):")
+        print(false_positives[['user_id', 'email', 'access_time', 'reason', 'deep_anomaly_score']].head())
+    
+    if report['time_abuse_incidents'] > 0:
+        print("\nPossible Time Abuse Incidents:")
+        print(df_logs[df_logs['is_time_abuse']][['user_id', 'email', 'access_time', 'time_diff']].head())
+
+    # AFEGIR: Lògica per enviar un correu amb el Report d'Anàlisi Global
+
+# Si vols provar l'anàlisi de batchs:
+# batch_analysis_deep_dive()
