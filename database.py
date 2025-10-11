@@ -23,6 +23,15 @@ def init_roles_table():
             name TEXT PRIMARY KEY
         );
     ''')
+    #Initial roles insertion
+    initial_roles = ['Student', 'Professor', 'Staff', 'Admin']
+    for role_name in initial_roles:
+        #ON CONFLICT DO NOTHING prevent errors if role already exists
+        cur.execute("INSERT INTO roles (name) VALUES (%s) ON CONFLICT (name) DO NOTHING", (role_name,))
+
+    conn.commit()
+    cur.close()
+    conn.close()
 
 def init_db():
     conn = get_db_connection()
@@ -62,15 +71,6 @@ def init_logs_table():
     cur.close()
     conn.close()
     
-    #Initial roles insertion
-    initial_roles = ['Student', 'Professor', 'Staff', 'Admin']
-    for role_name in initial_roles:
-        #ON CONFLICT DO NOTHING prevent errors if role already exists
-        cur.execute("INSERT INTO roles (name) VALUES (%s) ON CONFLICT (name) DO NOTHING", (role_name,))
-
-    conn.commit()
-    cur.close()
-    conn.close()
 
 def get_all_roles():
     """Obté tots els rols disponibles per al registre."""
@@ -169,7 +169,24 @@ def delete_user_by_email(email):
 def verify_password(stored_hash, input_password):
     return stored_hash == hash_password(input_password)
 
+
+def get_all_table_names():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+        AND table_type = 'BASE TABLE'
+        ORDER BY table_name;
+    """)
+    table_names = [row[0] for row in cur.fetchall()] 
+    cur.close()
+    conn.close()
+    print(table_names)
+
 if __name__ == "__main__":
+
     
     #Tables creation
     init_roles_table()
@@ -180,3 +197,5 @@ if __name__ == "__main__":
     #Tables deletion
     # delete_tables()
     # print("Database tables deleted.")
+
+    #get_all_table_names()
