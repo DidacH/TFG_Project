@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, Response
 from QR_generation_validation import generate_qr
 import uuid
-from database import save_user, check_password, get_db_connection, get_user_by_email, update_user, delete_user_by_email
+from database import save_user, check_password, get_db_connection, get_user_by_email, update_user, delete_user_by_email, get_all_roles
 import base64
 from io import BytesIO, StringIO
 from PIL import Image
@@ -73,6 +73,7 @@ def login():
 def register():
     errors = {}
     values = {}
+    available_roles = get_all_roles()
 
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
@@ -121,7 +122,7 @@ def register():
             cur.close()
             conn.close()
 
-    return render_template('register.html', errors=errors, values=values)
+    return render_template('register.html', errors=errors, values=values, available_roles=available_roles)
 
 
 #Dashboard
@@ -281,13 +282,12 @@ def download_logs():
     logs = get_all_logs()
     output = StringIO()
     writer = csv.writer(output, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-    writer.writerow(['User ID', 'Email', 'Role', 'Room', 'Access Time', 'Entry Allowed?', 'Reason'])
+    writer.writerow(['User ID', 'Role', 'Room', 'Access Time', 'Entry Allowed?', 'Reason'])
     output.write('\ufeff')
 
     for log in logs:
         writer.writerow([
             log['user_id'] if log['user_id'] else 'N/A',
-            log['email'] if log['email'] else 'N/A',
             log['role'] if log['role'] else 'N/A',
             log['room'] if log['room'] else 'N/A',
             log['access_time'] if log['access_time'] else 'N/A',

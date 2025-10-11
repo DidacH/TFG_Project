@@ -32,10 +32,9 @@
 
             <label for="role">Role:</label>
             <select name="role" id="role" required>
-                <option value="Student" {% if values.get('role') == 'Student' %}selected{% endif %}>Student</option>
-                <option value="Professor" {% if values.get('role') == 'Professor' %}selected{% endif %}>Professor</option>
-                <option value="Staff" {% if values.get('role') == 'Staff' %}selected{% endif %}>Staff</option>
-                <option value="Admin" {% if values.get('role') == 'Admin' %}selected{% endif %}>Admin</option>
+                {% for role_name in available_roles %}
+                    <option value="{{ role_name }}" {% if values.get('role') == role_name %}selected{% endif %}>{{ role_name }}</option>
+                {% endfor %}
             </select>
             {% if errors.get('role') %}
                 <p class="error">{{ errors['role'] }}</p>

@@ -15,13 +15,14 @@ def get_db_connection():
     conn.cursor_factory = extras.DictCursor
     return conn
 
-def delete_table():
+def init_roles_table():
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('DROP TABLE IF EXISTS users CASCADE')
-    conn.commit()
-    cur.close()
-    conn.close()
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS roles (
+            name TEXT PRIMARY KEY
+        );
+    ''')
 
 def init_db():
     conn = get_db_connection()
@@ -32,7 +33,7 @@ def init_db():
             name TEXT NOT NULL,
             email TEXT NOT NULL UNIQUE,
             password BYTEA NOT NULL,
-            role TEXT NOT NULL,
+            role TEXT NOT NULL REFERENCES roles(name) ON DELETE RESTRICT,
             qr_image BYTEA NOT NULL,
             last_qr_time TEXT NOT NULL,
             registered_at TEXT NOT NULL
@@ -49,7 +50,7 @@ def init_logs_table():
         CREATE TABLE IF NOT EXISTS logs (
             id SERIAL PRIMARY KEY,
             user_id TEXT NOT NULL,
-            role TEXT,
+            role TEXT NOT NULL,
             room TEXT NOT NULL,
             access_time TEXT NOT NULL,
             entry_allowed INTEGER NOT NULL,
@@ -60,11 +61,34 @@ def init_logs_table():
     conn.commit()
     cur.close()
     conn.close()
+    
+    #Initial roles insertion
+    initial_roles = ['Student', 'Professor', 'Staff', 'Admin']
+    for role_name in initial_roles:
+        #ON CONFLICT DO NOTHING prevent errors if role already exists
+        cur.execute("INSERT INTO roles (name) VALUES (%s) ON CONFLICT (name) DO NOTHING", (role_name,))
 
-def delete_logs():
+    conn.commit()
+    cur.close()
+    conn.close()
+
+def get_all_roles():
+    """Obté tots els rols disponibles per al registre."""
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('DROP TABLE IF EXISTS logs CASCADE')
+    cur.execute("SELECT name FROM roles ORDER BY name ASC")
+    roles = [row['name'] for row in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return roles
+
+def delete_tables():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    # DELETE ORDER: logs -> users -> roles
+    cur.execute('DROP TABLE IF EXISTS logs CASCADE') 
+    cur.execute('DROP TABLE IF EXISTS users CASCADE')
+    cur.execute('DROP TABLE IF EXISTS roles CASCADE')
     conn.commit()
     cur.close()
     conn.close()
@@ -148,11 +172,11 @@ def verify_password(stored_hash, input_password):
 if __name__ == "__main__":
     
     #Tables creation
+    init_roles_table()
     init_db()
     init_logs_table()
     print("Database initialized.")
 
     #Tables deletion
-    # delete_table()
-    # delete_logs()
-    # print("Tables deleted.")
+    # delete_tables()
+    # print("Database tables deleted.")
