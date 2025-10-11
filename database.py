@@ -60,7 +60,7 @@ def init_logs_table():
             id SERIAL PRIMARY KEY,
             user_id TEXT NOT NULL,
             role TEXT NOT NULL,
-            room TEXT NOT NULL,
+            area TEXT NOT NULL,
             access_time TEXT NOT NULL,
             entry_allowed INTEGER NOT NULL,
             reason TEXT NOT NULL,

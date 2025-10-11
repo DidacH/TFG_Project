@@ -19,7 +19,7 @@
                         <strong>Role:</strong> {{ log.role }} |
                         <strong>Time:</strong> {{ log.access_time }} |
                         <strong>Entry Allowed?:</strong> {{ 'Yes' if log.entry_allowed else 'No' }} |
-                        <strong>Room:</strong> {{ log.room or 'N/A' }}
+                        <strong>Area:</strong> {{ log.area or 'N/A' }}
                     </li>
                 {% endfor %}
             </ul>

@@ -47,18 +47,18 @@ while True:
     print("QR Code Content:", result)
     data = verify_qr(result, SIGNATURE_KEY)
 
-    room = "room_1"
+    area = "area_1"
 
     #Log the attempt
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute('''
-        INSERT INTO logs (user_id, role, room, access_time, entry_allowed, reason)
+        INSERT INTO logs (user_id, role, area, access_time, entry_allowed, reason)
         VALUES (%s, %s, %s, %s, %s, %s)
     ''', (
         data['user_id'],
         data['role'],
-        room,
+        area,
         data['access_time'],
         int(data['valid']),
         data['reason']

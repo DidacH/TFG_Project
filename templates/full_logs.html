@@ -17,7 +17,7 @@
                     <th>Access Time</th>
                     <th>Entry Allowed?</th>
                     <th>Reason</th>
-                    <th>Room</th>
+                    <th>Area</th>
                 </tr>
             </thead>
             <tbody>
@@ -28,7 +28,7 @@
                         <td>{{ log.access_time }}</td>
                         <td>{{ 'Yes' if log.entry_allowed else 'No' }}</td>
                         <td>{{ log.reason }}</td>
-                        <td>{{ log.room or 'N/A' }}</td>
+                        <td>{{ log.area or 'N/A' }}</td>
                     </tr>
                 {% endfor %}
             </tbody>

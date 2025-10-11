@@ -158,7 +158,7 @@ def dashboard():
 
     #Fetch last successful access
     cur.execute('''
-        SELECT access_time, room FROM logs 
+        SELECT access_time, area FROM logs 
         WHERE user_id = %s AND entry_allowed = 1 
         ORDER BY access_time DESC LIMIT 1
     ''', (user_id,))
@@ -166,7 +166,7 @@ def dashboard():
 
     #Fetch all successful accesses
     cur.execute('''
-        SELECT access_time, room FROM logs 
+        SELECT access_time, area FROM logs 
         WHERE user_id = %s AND entry_allowed = 1 
         ORDER BY access_time DESC
     ''', (user_id,))
@@ -182,8 +182,8 @@ def dashboard():
         role=user['role'],
         qr_base64=qr_base64,
         last_qr_time=last_qr_time,
-        last_access=(f"{last_access['access_time']} / {last_access['room']}" if last_access else None),
-        history=[f"{row['access_time']} / {row['room']}" for row in history] if history else [],
+        last_access=(f"{last_access['access_time']} / {last_access['area']}" if last_access else None),
+        history=[f"{row['access_time']} / {row['area']}" for row in history] if history else [],
         remaining=remaining
     )
 
@@ -282,14 +282,14 @@ def download_logs():
     logs = get_all_logs()
     output = StringIO()
     writer = csv.writer(output, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-    writer.writerow(['User ID', 'Role', 'Room', 'Access Time', 'Entry Allowed?', 'Reason'])
+    writer.writerow(['User ID', 'Role', 'Area', 'Access Time', 'Entry Allowed?', 'Reason'])
     output.write('\ufeff')
 
     for log in logs:
         writer.writerow([
             log['user_id'] if log['user_id'] else 'N/A',
             log['role'] if log['role'] else 'N/A',
-            log['room'] if log['room'] else 'N/A',
+            log['area'] if log['area'] else 'N/A',
             log['access_time'] if log['access_time'] else 'N/A',
             log['entry_allowed'] if log['entry_allowed'] is not None else 'N/A',
             log['reason'] if log['reason'] else 'N/A',

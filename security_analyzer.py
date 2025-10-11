@@ -19,7 +19,7 @@ ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")
 model = None
 scaler = None
 label_encoders = {}
-FEATURE_COLUMNS = ['role_encoded', 'room_encoded', 'hour', 'weekday', 'is_admin']
+FEATURE_COLUMNS = ['role_encoded', 'area_encoded', 'hour', 'weekday', 'is_admin']
 
 def _get_dataset_for_training():
     """
@@ -34,7 +34,7 @@ def _get_dataset_for_training():
         'user_id': ['u1', 'u2', 'u3', 'u4', 'u5'],
         'email': ['u1@inst.edu', 'u2@inst.edu', 'a1@inst.edu', 'u4@inst.edu', 'u5@inst.edu'],
         'role': ['Student', 'Professor', 'Admin', 'Student', 'Staff'],
-        'room': ['room_1', 'room_2', 'room_3', 'room_1', 'room_2'],
+        'area': ['area_1', 'area_2', 'area_3', 'area_1', 'area_2'],
         'access_time': [
             '2025-10-10 09:00:00', '2025-10-10 10:30:00', '2025-10-10 11:00:00',
             '2025-10-10 20:00:00', '2025-10-11 08:00:00'
@@ -57,7 +57,7 @@ def preprocess_data(df):
     fit_and_transform = (model is None) 
     
     # 1. Codificació de Rol i Sala
-    for col in ['role', 'room']:
+    for col in ['role', 'area']:
         encoder = label_encoders.get(col, LabelEncoder())
         if fit_and_transform:
             df[f'{col}_encoded'] = encoder.fit_transform(df[col])
@@ -144,7 +144,7 @@ def send_anomaly_alert(log_entry, score):
                 <li><strong>User ID:</strong> {log_entry.get('user_id')}</li>
                 <li><strong>Email:</strong> {log_entry.get('email')}</li>
                 <li><strong>Role:</strong> {log_entry.get('role')}</li>
-                <li><strong>Room:</strong> {log_entry.get('room')}</li>
+                <li><strong>Area:</strong> {log_entry.get('area')}</li>
                 <li><strong>Access Time:</strong> {log_entry.get('access_time')}</li>
                 <li><strong>Entry Allowed:</strong> {'Yes' if log_entry.get('entry_allowed') else 'No'}</li>
                 <li><strong>Reason:</strong> {log_entry.get('reason')}</li>
