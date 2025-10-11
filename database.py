@@ -76,7 +76,7 @@ def get_all_roles():
     """Obté tots els rols disponibles per al registre."""
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT name FROM roles ORDER BY name ASC")
+    cur.execute("SELECT name FROM roles ORDER BY name DESC")
     roles = [row['name'] for row in cur.fetchall()]
     cur.close()
     conn.close()
@@ -198,4 +198,4 @@ if __name__ == "__main__":
     # delete_tables()
     # print("Database tables deleted.")
 
-    #get_all_table_names()
+    get_all_table_names()
