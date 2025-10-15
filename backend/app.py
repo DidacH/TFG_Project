@@ -12,7 +12,11 @@ from dotenv import load_dotenv
 import os
 
 
-app = Flask(__name__)
+app = Flask(
+    __name__,
+    template_folder='../frontend/templates',
+    static_folder='../frontend/static'
+    )
 load_dotenv()  #Load environment variables from .env file
 
 app.secret_key = os.getenv("SECRET_KEY")
