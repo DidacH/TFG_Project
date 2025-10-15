@@ -14,7 +14,7 @@ function Email({ value, onChange }: EmailProps) {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="email@domain.com"
-        className="w-full h-full bg-transparent border-none outline-none font-regular text-[18px] text-[#828282] placeholder:text-[#828282] focus:placeholder-transparent transition-colors"
+        className="w-full h-full bg-transparent border-none outline-none font-regular text-[18px] text-black placeholder:text-[#828282] focus:placeholder-transparent transition-colors duration-300"
       />
     </div>
   );
@@ -34,7 +34,7 @@ function Password({ value, onChange }: PasswordProps) {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="password"
-        className="w-full h-full bg-transparent border-none outline-none font-regular text-[18px] text-[#828282] placeholder:text-[#828282] focus:placeholder-transparent transition-colors"
+        className="w-full h-full bg-transparent border-none outline-none font-regular text-[18px] text-black placeholder:text-[#828282] focus:placeholder-transparent transition-colors duration-300"
       />
     </div>
   );
@@ -86,7 +86,7 @@ function RegisterButton({ onClick }: RegisterButtonProps) {
   );
 }
 
-export default function Frame21() {
+export default function FrameLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 

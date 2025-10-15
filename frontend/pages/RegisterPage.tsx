@@ -1,7 +1,9 @@
+import FrameRegister from "../imports/FrameRegister";
+
 export default function RegisterPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <h1>Register Page - Add your next Figma frame here</h1>
+    <div className="w-full min-h-screen flex justify-center pt-16 md:pt-20">
+      <FrameRegister />
     </div>
   );
 }
