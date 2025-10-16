@@ -1,3 +1,4 @@
+"""
 import pandas as pd
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import LabelEncoder, StandardScaler
@@ -23,11 +24,13 @@ FEATURE_COLUMNS = ['role_encoded', 'area_encoded', 'hour', 'weekday', 'is_admin'
 
 def _get_dataset_for_training():
     """
+"""
     Simula la càrrega de dades per a l'entrenament.
     En un escenari real, aquestes dades haurien de ser molt més extenses i 
     haurien de provenir d'un fitxer CSV o directament de la BD.
 
     :return: DataFrame amb dades d'entrenament.
+"""
     """
     # Exemple de dades inicials (tu les hauries de reemplaçar per les teves dades reals)
     data = {
@@ -264,3 +267,5 @@ def batch_analysis_deep_dive():
 
 # Si vols provar l'anàlisi de batchs:
 # batch_analysis_deep_dive()
+
+"""
