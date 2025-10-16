@@ -4,7 +4,7 @@ import RegisterPage from "./pages/RegisterPage";
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background min-w-[360px]">
       <HashRouter>
         <Routes>
           <Route path="/" element={<LoginPage />} />

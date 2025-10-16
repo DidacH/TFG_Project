@@ -1,148 +1,191 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { ChevronDown, Eye, EyeOff } from "lucide-react";
 
-interface EmailProps {
+
+// Reusable input component
+interface InputProps {
   value: string;
   onChange: (value: string) => void;
+  placeholder: string;
+  type?: "text" | "email" | "name";
 }
 
-function Email({ value, onChange }: EmailProps) {
+function Input({ value, onChange, placeholder, type = "text" }: InputProps) {
   return (
-    <div className="relative bg-white box-border content-stretch flex gap-[16px] h-[45px] items-center justify-center px-[16px] py-[8px] rounded-[8px] w-full" data-name="email">
+    <div className="relative bg-white box-border flex items-center h-[45px] rounded-[8px] w-full">
       <div aria-hidden="true" className="absolute border border-[#e0e0e0] border-solid inset-0 pointer-events-none rounded-[8px]" />
       <input
-        type="email"
+        type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="email@domain.com"
-        className="w-full h-full bg-transparent border-none outline-none font-regular text-[18px] text-black placeholder:text-[#828282] focus:placeholder-transparent transition-colors duration-300"
+        placeholder={placeholder}
+        className="w-full h-full bg-transparent border-none outline-none font-sans px-4
+                   text-base md:text-lg text-black 
+                   placeholder:text-[#828282] 
+                   focus:placeholder-transparent transition-colors duration-300"
       />
     </div>
   );
 }
 
-interface PasswordProps {
-  value: string;
-  onChange: (value: string) => void;
+// See/unsee password input component
+interface PasswordInputProps {
+    value: string;
+    onChange: (value: string) => void;
+    placeholder: string;
 }
 
-function Password({ value, onChange }: PasswordProps) {
+function PasswordInput({ value, onChange, placeholder }: PasswordInputProps) {
+    const [showPassword, setShowPassword] = useState(false);
+
+    const toggleVisibility = () => {
+        setShowPassword(!showPassword);
+    };
+
+    return (
+        <div className="relative bg-white box-border flex items-center h-[45px] rounded-[8px] w-full">
+            <div aria-hidden="true" className="absolute border border-[#e0e0e0] border-solid inset-0 pointer-events-none rounded-[8px]" />
+            <input
+                type={showPassword ? "text" : "password"}
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+                placeholder={placeholder}
+                className="w-full h-full bg-transparent border-none outline-none font-sans pl-4 pr-12
+                           text-base md:text-lg text-black 
+                           placeholder:text-[#828282] 
+                           focus:placeholder-transparent transition-colors duration-300"
+            />
+            <button
+                type="button"
+                onClick={toggleVisibility}
+                className="absolute right-0 top-0 h-full px-4 flex items-center text-gray-500 hover:text-gray-700"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+            >
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+            </button>
+        </div>
+    );
+}
+
+// Role dropdown component
+interface RoleDropdownProps {
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string }[];
+}
+
+function RoleDropdown({ value, onChange, options }: RoleDropdownProps) {
+  const textColorClass = value ? 'text-black' : 'text-[#828282]';
+
   return (
-    <div className="relative bg-white box-border content-stretch flex gap-[16px] h-[45px] items-center justify-center px-[16px] py-[8px] rounded-[8px] w-full" data-name="password">
+    <div className="relative bg-white box-border flex items-center h-[45px] rounded-[8px] w-full">
       <div aria-hidden="true" className="absolute border border-[#e0e0e0] border-solid inset-0 pointer-events-none rounded-[8px]" />
-      <input
-        type="password"
+      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500 pointer-events-none" />
+      <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="password"
-        className="w-full h-full bg-transparent border-none outline-none font-regular text-[18px] text-black placeholder:text-[#828282] focus:placeholder-transparent transition-colors duration-300"
-      />
+        className={`w-full h-full bg-transparent border-none outline-none font-sans px-4 appearance-none 
+                   text-base md:text-lg 
+                   ${textColorClass}`}
+      >
+        <option value="" disabled>select a role...</option>
+        {options.map((option) => (
+          <option key={option.value} value={option.value} className="text-black bg-white">
+            {option.label}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }
 
-interface ContinueButtonProps {
-  onClick: () => void;
+// Reusable button component
+interface ActionButtonProps {
+    onClick: () => void;
+    children: React.ReactNode;
+    variant?: 'primary' | 'secondary';
 }
 
-function ContinueButton({ onClick }: ContinueButtonProps) {
-  return (
-    <button
-      onClick={onClick}
-      className="bg-[#c8102e] hover:bg-[#b00f29] active:bg-[#a00d25] box-border content-stretch cursor-pointer flex gap-[8px] h-[50px] items-center justify-center px-[16px] py-0 rounded-[8px] w-full transition-colors"
-      data-name="Continue button"
-    >
-      <div className="font-medium font-medium text-[20px] text-nowrap text-white">
-        <p>Continue</p>
-      </div>
-    </button>
-  );
+function ActionButton({ onClick, children, variant = 'primary' }: ActionButtonProps) {
+    const baseClasses = "box-border cursor-pointer flex h-[50px] items-center justify-center rounded-[8px] w-full transition-colors font-medium";
+    const variantClasses = {
+        primary: "bg-[#c8102e] hover:bg-[#b00f29] active:bg-[#a00d25] text-white", //primary button
+        secondary: "bg-[#eeeeee] hover:bg-[#e0e0e0] active:bg-[#d5d5d5] text-black" //secondary button
+    };
+
+    return (
+        <button onClick={onClick} className={`${baseClasses} ${variantClasses[variant]}`}>
+             <p className="text-lg md:text-xl">{children}</p>
+        </button>
+    );
 }
 
+// Divider
 function Divider() {
   return (
-    <div className="flex gap-[4px] h-[25px] items-center justify-center w-full" data-name="Divider">
-      <div className="grow bg-[#e6e6e6] h-px" data-name="Divider" />
-      <p className="font-['Inter:Regular',_sans-serif] font-normal text-[#828282] text-[18px] text-center">or</p>
-      <div className="grow bg-[#e6e6e6] h-px" data-name="Divider" />
+    <div className="flex gap-4 h-[25px] items-center justify-center w-full" data-name="Divider">
+      <div className="grow bg-[#e6e6e6] h-px" />
+      <p className="font-sans text-[#828282] text-base md:text-lg">or</p>
+      <div className="grow bg-[#e6e6e6] h-px" />
     </div>
   );
 }
 
-interface RegisterButtonProps {
-  onClick: () => void;
-}
 
-function RegisterButton({ onClick }: RegisterButtonProps) {
-  return (
-    <button
-      onClick={onClick}
-      className="bg-[#eeeeee] hover:bg-[#e0e0e0] active:bg-[#d5d5d5] box-border content-stretch cursor-pointer flex gap-[8px] h-[50px] items-center justify-center px-[16px] py-0 rounded-[8px] w-full transition-colors"
-      data-name="Register button"
-    >
-      <div className="font-medium font-medium text-[20px] text-black text-nowrap">
-        <p>Register here</p>
-      </div>
-    </button>
-  );
-}
-
+// Main Register Frame Component
 export default function FrameRegister() {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [role, setRole] = useState("");
+  const navigate = useNavigate();
 
-  const handleContinue = async () => {
-    // ... lògica de login ...
-  };
+  const roleOptions = [
+    { value: "student", label: "Student" },
+    { value: "teacher", label: "Teacher" },
+    { value: "admin", label: "Administrator" },
+  ];
 
   const handleRegister = () => {
-    // ... lògica de registre ...
+    //Registration logic
+    console.log({ name, email, password, role });
   };
-
-  const handleForgotPassword = () => {
-    // ... lògica de contrasenya oblidada ...
-  };
+  
+  const navigateToLogin = () => {
+      navigate('/login');
+  }
 
   return (
-    //MAIN CONTAINER:
-    <div className="w-11/12 max-w-xs md:max-w-md lg:max-w-lg flex flex-col items-center gap-4 p-4">
-      
-      {/* TITLES: */}
+    <div className="w-11/12 max-w-xs md:max-w-md lg:max-w-lg xl:max-w-xl flex flex-col items-center gap-4 p-4">
+      {/* TITLES */}
       <div className="text-center mb-4 md:mb-6">
-        {/* - Mobile: text-3xl */}
-        {/* - Tablet and higher: text-4xl */}
-        <p className="font-semi-bold font-semibold text-3xl md:text-4xl text-black">Login</p>
-        
-        {/* - Mobile: text-lg (large) */}
-        {/* - Tablet and higher: text-2xl */}
-        <p className="mt-2 font-semi-bold font-semibold text-lg md:text-2xl text-gray-700">
-          Enter into your account
+        <p className="font-semibold text-3xl md:text-4xl xl:text-5xl text-black">
+          Register
+        </p>
+        <p className="mt-2 font-semibold text-lg md:text-xl xl:text-2xl text-gray-700">
+          Get started with a new account
         </p>
       </div>
 
-      {/* FORM: */}
-      {/* - Mobile: Gap between elements of 3 (gap-3) */}
-      {/* - Tablet and higher: Gap of 4 (md:gap-4) */}
+      {/* FORM */}
       <div className="w-full flex flex-col gap-3 md:gap-4">
-        <Email value={email} onChange={setEmail} />
-        <Password value={password} onChange={setPassword} />
+        <Input value={name} onChange={setName} placeholder="name" type="name" />
+        <Input value={email} onChange={setEmail} placeholder="email@domain.com" type="email" />
+        <PasswordInput value={password} onChange={setPassword} placeholder="password" />
+        <RoleDropdown value={role} onChange={setRole} options={roleOptions} />
       </div>
 
-      <button
-        onClick={handleForgotPassword}
-        className="self-start font-light font-light text-sm text-black underline hover:opacity-80 active:opacity-60 transition-opacity"
-      >
-        Forgot password?
-      </button>
-
-      {/* ACTION BUTTONS: */}
-      {/* - Mobile: Upper margin of 1 (mt-1) */}
-      {/* - Tablet and higher: Upper margin of 2 (md:mt-2) */}
-      <div className="w-full flex flex-col gap-3 md:gap-4 mt-1 md:mt-2">
-        <ContinueButton onClick={handleContinue} />
+      {/* ACTION BUTTONS */}
+      <div className="w-full flex flex-col gap-3 md:gap-4 mt-4">
+        <ActionButton onClick={handleRegister} variant="primary">
+            Register
+        </ActionButton>
         <Divider />
-        <RegisterButton onClick={handleRegister} />
+        <ActionButton onClick={navigateToLogin} variant="secondary">
+            Back to Login
+        </ActionButton>
       </div>
-
     </div>
   );
 }
