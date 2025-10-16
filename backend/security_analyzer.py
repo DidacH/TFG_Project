@@ -48,7 +48,7 @@ def _get_dataset_for_training():
     return df
 
 def preprocess_data(df):
-    """Aplica la transformació de característiques al DataFrame."""
+    """ """Aplica la transformació de característiques al DataFrame.""" """
     global label_encoders, scaler
     
     # Enginyeria de característiques temporals
@@ -90,7 +90,7 @@ def preprocess_data(df):
     return df
 
 def train_security_model():
-    """Entrena el model Isolation Forest amb un dataset inicial."""
+    """ """Entrena el model Isolation Forest amb un dataset inicial.""" """
     global model
     df_train = _get_dataset_for_training()
     df_processed = preprocess_data(df_train)
@@ -104,9 +104,11 @@ def train_security_model():
 
 def predict_anomaly(log_entry):
     """
+"""
     Calcula la puntuació d'anomalia per a una única entrada de log.
     :param log_entry: Diccionari amb les dades del log.
     :return: Puntuació d'anomalia (score), i la classificació (True/False per anomalia)
+"""
     """
     global model
     if model is None:
@@ -132,13 +134,14 @@ def predict_anomaly(log_entry):
     return anomaly_score, is_anomaly
 
 def send_anomaly_alert(log_entry, score):
-    """Envia un correu electrònic als administradors en cas d'anomalia."""
+    """ """Envia un correu electrònic als administradors en cas d'anomalia.""" """
     if not SENDGRID_API_KEY or not ADMIN_EMAIL:
         print("ALERT: SendGrid keys not configured. Email not sent.")
         return
 
     subject = f"ALERTA D'ANOMALIA D'ACCÉS: Score {score:.4f}"
     body_html = f"""
+"""
         <html>
         <body>
             <h2>Access Anomaly Detected</h2>
@@ -155,6 +158,7 @@ def send_anomaly_alert(log_entry, score):
             <p>Please review the logs immediately.</p>
         </body>
         </html>
+"""
     """
 
     message = Mail(
@@ -177,18 +181,20 @@ train_security_model()
 
 
 def fetch_all_logs():
-    """Obté tots els logs i dades d'usuari rellevants de la BD."""
+    """ """Obté tots els logs i dades d'usuari rellevants de la BD.""" """
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=extras.DictCursor)
     
     # Utilitza un JOIN per obtenir tota la informació necessària
     cur.execute("""
+"""
         SELECT 
             l.access_time, l.area, l.entry_allowed, l.reason,
             u.role, u.email, u.id AS user_id, u.registered_at
         FROM logs l
         JOIN users u ON l.user_id = u.id
         ORDER BY l.access_time DESC
+"""
     """)
     logs = cur.fetchall()
     cur.close()
@@ -200,9 +206,11 @@ def fetch_all_logs():
 
 def batch_analysis_deep_dive():
     """
+"""
     Realitza una anàlisi més profunda dels logs, ideal per a l'anàlisi diària/setmanal.
     Aquesta anàlisi pot incloure la detecció de patrons de "Falsos Positius" (FP) o 
     "Amenaces per Patrons de Múltiples Logs".
+"""
     """
     df_logs = fetch_all_logs()
     if df_logs.empty:
