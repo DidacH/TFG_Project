@@ -1,4 +1,6 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, Response
+from flask import Flask, render_template, request, redirect, url_for, session, flash, Response, jsonify
+from flask_cors import CORS
+import jwt
 from QR_generation_validation import generate_qr
 import uuid
 from database import save_user, check_password, get_db_connection, get_user_by_email, update_user, delete_user_by_email, get_all_roles
@@ -6,20 +8,23 @@ import base64
 from io import BytesIO, StringIO
 from PIL import Image
 import csv
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import time
 from dotenv import load_dotenv
 import os
 
+load_dotenv()  #Load environment variables from .env file
 
 app = Flask(
     __name__,
     template_folder='../frontend/templates',
     static_folder='../frontend/static'
     )
-load_dotenv()  #Load environment variables from .env file
 
 app.secret_key = os.getenv("SECRET_KEY")
+
+CORS(app, supports_credentials=True) #Allow communication between frontend and backend
+SIGNATURE_KEY = os.getenv("SIGNATURE_KEY").encode('utf-8')
 
 app.config.update(
     SESSION_COOKIE_SECURE=True,
@@ -29,6 +34,73 @@ app.config.update(
 
 ADMIN_REGISTRATION_KEY = os.getenv("ADMIN_KEY")
 SIGNATURE_KEY = os.getenv("SIGNATURE_KEY").encode('utf-8')
+
+
+@app.route('/api/roles', methods=['GET'])
+def api_get_roles():
+    """Obtain all available roles from database"""
+    try:
+        roles = get_all_roles()
+        return jsonify(roles), 200
+    except Exception as e:
+        return jsonify({'message': f'Internal server error: {e}'}), 500
+
+@app.route('/api/register', methods=['POST'])
+def api_register():
+    data = request.get_json()
+    name = data.get('name')
+    email = data.get('email')
+    password = data.get('password')
+    role = data.get('role')
+
+    if not all([name, email, password, role]):
+        return jsonify({'message': 'All fields must be filled in'}), 400
+
+    if get_user_by_email(email):
+        return jsonify({'message': 'This email is already registered for another account'}), 409
+
+    try:
+        user_id = str(uuid.uuid4())
+        qr_image, last_qr_time = generate_qr(user_id, SIGNATURE_KEY)
+        registered_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        save_user(user_id, name, email, password, role, qr_image, last_qr_time, registered_at)
+        
+        return jsonify({'message': 'User successfully registered!'}), 201
+    except Exception as e:
+        return jsonify({'message': f'Internal server error: {e}'}), 500
+
+@app.route('/api/login', methods=['POST'])
+def api_login():
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password')
+
+    if not email or not password:
+        return jsonify({'message': 'All fields must be filled in'}), 400
+
+    user = get_user_by_email(email)
+
+    if not user or not check_password(password, user['password']):
+        return jsonify({'message': 'Invalid credentials'}), 401
+
+    try:
+        #Create JWT token
+        payload = {
+            'user_id': user['id'],
+            'role': user['role'],
+            'exp': datetime.now(timezone.utc) + timedelta(hours=1)  #Token expires in 1 hour
+        }
+        token = jwt.encode(payload, app.secret_key, algorithm="HS256")
+
+        return jsonify({'token': token}), 200
+    except Exception as e:
+        return jsonify({'message': f'Error in token generation: {e}'}), 500
+
+
+
+
+
 
 
 
@@ -442,3 +514,8 @@ def delete_user():
 def logout():
     session.clear()
     return redirect(url_for('login'))
+
+
+
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)

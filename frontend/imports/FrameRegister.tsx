@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronDown, Eye, EyeOff } from "lucide-react";
+import { ChevronDown, Eye, EyeOff, Loader2 } from "lucide-react";
 
 
 // Reusable input component
@@ -89,7 +89,9 @@ function RoleDropdown({ value, onChange, options }: RoleDropdownProps) {
                    text-base md:text-lg 
                    ${textColorClass}`}
       >
-        <option value="" disabled>select a role...</option>
+        <option value="" disabled>
+          select your role...
+        </option>
         {options.map((option) => (
           <option key={option.value} value={option.value} className="text-black bg-white">
             {option.label}
@@ -105,9 +107,10 @@ interface ActionButtonProps {
     onClick: () => void;
     children: React.ReactNode;
     variant?: 'primary' | 'secondary';
+    IsLoading?: boolean;
 }
 
-function ActionButton({ onClick, children, variant = 'primary' }: ActionButtonProps) {
+function ActionButton({ onClick, children, variant = 'primary', IsLoading = false }: ActionButtonProps) {
     const baseClasses = "box-border cursor-pointer flex h-[50px] items-center justify-center rounded-[8px] w-full transition-colors font-medium";
     const variantClasses = {
         primary: "bg-[#c8102e] hover:bg-[#b00f29] active:bg-[#a00d25] text-white", //primary button
@@ -115,8 +118,16 @@ function ActionButton({ onClick, children, variant = 'primary' }: ActionButtonPr
     };
 
     return (
-        <button onClick={onClick} className={`${baseClasses} ${variantClasses[variant]}`}>
-             <p className="text-lg md:text-xl">{children}</p>
+        <button 
+          onClick={onClick} 
+          className={`${baseClasses} ${variantClasses[variant]} ${IsLoading ? 'opacity-75 cursor-not-allowed' : ''}`}
+          disabled={IsLoading} //Disable button while loading
+        >
+          {IsLoading ? (
+                <Loader2 className="animate-spin h-6 w-6" /> //Showing loading icon spinner
+            ) : (
+                <p className="text-lg md:text-xl">{children}</p>
+            )}
         </button>
     );
 }
@@ -139,25 +150,89 @@ export default function FrameRegister() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("");
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  const [roleOptions, setRoleOptions] = useState<{ value: string; label: string }[]>([]);
+
   const navigate = useNavigate();
 
-  const roleOptions = [
-    { value: "student", label: "Student" },
-    { value: "teacher", label: "Teacher" },
-    { value: "admin", label: "Administrator" },
-  ];
 
-  const handleRegister = () => {
-    //Registration logic
-    console.log({ name, email, password, role });
+  useEffect(() => {
+    const fetchRoles = async () => {
+      try {
+        const response = await fetch('/api/roles');
+        if (!response.ok) {
+          throw new Error('Could not fetch roles from server.');
+        }
+        const rolesFromApi: string[] = await response.json();
+        const options = rolesFromApi.map(roleName => ({ value: roleName, label: roleName }));
+        setRoleOptions(options);
+      } catch (err: any) {
+        setError("Connection error: could not fetch roles.");
+      }
+    };
+
+    fetchRoles();
+  }, []); //Empty dependency array to run only once on mount
+
+  const validateEmail = (email: string) => {
+    //Regular expression for basic email validation
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  };
+
+  const handleRegister = async () => {
+    setError("");
+
+    if (!name || !email || !password || !role) {
+      setError("All fields must be filled in.");
+      return;
+    }
+
+    if (!validateEmail(email)) {
+      setError("Invalid email format.");
+      return;
+    }
+
+    setIsLoading(true); //Start loading state
+    try {
+      const response = await fetch('/api/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name, email, password, role }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Error during registration');
+      }
+
+      //On success navigate to the login page
+      navigate('/login', { state: { message: "User successfully registered!" } });
+
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false); //Finish loading state
+    }
   };
   
   const navigateToLogin = () => {
       navigate('/login');
   }
 
+
+  const handleKeyPress = (event: React.KeyboardEvent) => {
+    if (event.key === 'Enter' && !isLoading) {
+      handleRegister();
+    }
+  };
+
   return (
-    <div className="w-11/12 max-w-xs md:max-w-md lg:max-w-lg xl:max-w-xl flex flex-col items-center gap-4 p-4">
+    <div className="w-11/12 max-w-xs md:max-w-md lg:max-w-lg xl:max-w-xl flex flex-col items-center gap-4 p-4" onKeyDown={handleKeyPress}>
       {/* TITLES */}
       <div className="text-center mb-4 md:mb-6">
         <p className="font-semibold text-3xl md:text-4xl xl:text-5xl text-black">
@@ -176,9 +251,16 @@ export default function FrameRegister() {
         <RoleDropdown value={role} onChange={setRole} options={roleOptions} />
       </div>
 
+      {/* ERROR MESSAGE */}
+      {error && (
+        <div className="w-full bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md text-center mb-4">
+          <p>{error}</p>
+        </div>
+      )}
+
       {/* ACTION BUTTONS */}
       <div className="w-full flex flex-col gap-3 md:gap-4 mt-4">
-        <ActionButton onClick={handleRegister} variant="primary">
+        <ActionButton onClick={handleRegister} variant="primary" IsLoading={isLoading}>
             Register
         </ActionButton>
         <Divider />

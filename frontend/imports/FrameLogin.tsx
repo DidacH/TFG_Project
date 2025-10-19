@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Eye, EyeOff } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 
 
 // Reusable input component 
@@ -73,9 +73,10 @@ interface ActionButtonProps {
     onClick: () => void;
     children: React.ReactNode;
     variant?: 'primary' | 'secondary';
+    IsLoading?: boolean;
 }
 
-function ActionButton({ onClick, children, variant = 'primary' }: ActionButtonProps) {
+function ActionButton({ onClick, children, variant = 'primary', IsLoading = false }: ActionButtonProps) {
     const baseClasses = "box-border cursor-pointer flex h-[50px] items-center justify-center rounded-[8px] w-full transition-colors font-medium";
     const variantClasses = {
         primary: "bg-[#c8102e] hover:bg-[#b00f29] active:bg-[#a00d25] text-white",
@@ -83,8 +84,16 @@ function ActionButton({ onClick, children, variant = 'primary' }: ActionButtonPr
     };
 
     return (
-        <button onClick={onClick} className={`${baseClasses} ${variantClasses[variant]}`}>
-             <p className="text-lg md:text-xl">{children}</p>
+        <button 
+          onClick={onClick} 
+          className={`${baseClasses} ${variantClasses[variant]} ${IsLoading ? 'opacity-75 cursor-not-allowed' : ''}`}
+          disabled={IsLoading} //Disable button while loading
+        >
+          {IsLoading ? (
+                <Loader2 className="animate-spin h-6 w-6" /> //Showing loading icon spinner
+            ) : (
+                <p className="text-lg md:text-xl">{children}</p>
+            )}
         </button>
     );
 }
@@ -105,11 +114,67 @@ function Divider() {
 export default function FrameLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const handleContinue = () => {
-    //Login logic here
-    console.log({ email, password });
+
+  const validateEmail = (email: string) => {
+    //Regular expression for basic email validation
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  };
+
+  useEffect(() => {
+    if (location.state?.message) {
+      setSuccessMessage(location.state.message);
+      //Clean the state to prevent showing the message again on future visits
+      window.history.replaceState({}, document.title)
+    }
+  }, [location]);
+
+  //Login handler
+  const handleContinue = async () => {
+    setError(""); //Clean previous errors
+    setSuccessMessage(""); //Clean previous success messages
+
+    if (!email || !password) {
+      setError("All fields must be filled in.");
+      return;
+    }
+
+    if (!validateEmail(email)) {
+      setError("Invalid email format.");
+      return;
+    }
+
+    setIsLoading(true); //Start loading state
+    try {
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        //Show error message if there is an error
+        throw new Error(data.message || 'Error during login');
+      }
+
+      //If login is successful we store the token and navigate to dashboard
+      localStorage.setItem('token', data.token); //Store token for future sessions
+      navigate('/dashboard'); //Dashboard redirection
+
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false); //Finish loading state
+    }
   };
 
   const handleForgotPassword = () => {
@@ -121,8 +186,14 @@ export default function FrameLogin() {
       navigate('/register');
   }
 
+  const handleKeyPress = (event: React.KeyboardEvent) => {
+    if (event.key === 'Enter' && !isLoading) {
+      handleContinue();
+    }
+  };
+
   return (
-    <div className="w-11/12 max-w-xs md:max-w-md lg:max-w-lg xl:max-w-xl flex flex-col items-center gap-4 p-4">
+    <div className="w-11/12 max-w-xs md:max-w-md lg:max-w-lg xl:max-w-xl flex flex-col items-center gap-4 p-4" onKeyDown={handleKeyPress}>
       {/* TITLES */}
       <div className="text-center mb-4 md:mb-6">
         <p className="font-semibold text-3xl md:text-4xl xl:text-5xl text-black">
@@ -146,9 +217,21 @@ export default function FrameLogin() {
         Forgot password?
       </button>
 
+      {/* MESSAGES BLOCK */}
+      {error && (
+        <div className="w-full bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md text-center mb-4">
+          <p>{error}</p>
+        </div>
+      )}
+      {successMessage && (
+        <div className="w-full bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-md text-center mb-2">
+          <p>{successMessage}</p>
+        </div>
+      )}
+
       {/* ACTION BUTTONS */}
       <div className="w-full flex flex-col gap-3 md:gap-4 mt-4">
-        <ActionButton onClick={handleContinue} variant="primary">
+        <ActionButton onClick={handleContinue} variant="primary" IsLoading={isLoading}>
             Continue
         </ActionButton>
         <Divider />
