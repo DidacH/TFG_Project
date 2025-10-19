@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 // Reusable input component 
 interface InputProps {
@@ -151,7 +152,7 @@ export default function FrameLogin() {
 
     setIsLoading(true); //Start loading state
     try {
-      const response = await fetch('/api/login', {
+      const response = await fetch(`${API_URL}/api/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

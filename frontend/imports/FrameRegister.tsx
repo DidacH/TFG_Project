@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronDown, Eye, EyeOff, Loader2 } from "lucide-react";
 
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 // Reusable input component
 interface InputProps {
@@ -161,7 +162,7 @@ export default function FrameRegister() {
   useEffect(() => {
     const fetchRoles = async () => {
       try {
-        const response = await fetch('/api/roles');
+        const response = await fetch(`${API_URL}/api/roles`);
         if (!response.ok) {
           throw new Error('Could not fetch roles from server.');
         }
@@ -196,7 +197,7 @@ export default function FrameRegister() {
 
     setIsLoading(true); //Start loading state
     try {
-      const response = await fetch('/api/register', {
+      const response = await fetch(`${API_URL}/api/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
