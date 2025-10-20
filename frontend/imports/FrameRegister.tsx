@@ -112,7 +112,7 @@ interface ActionButtonProps {
 }
 
 function ActionButton({ onClick, children, variant = 'primary', IsLoading = false }: ActionButtonProps) {
-    const baseClasses = "box-border cursor-pointer flex h-[50px] items-center justify-center rounded-[8px] w-full transition-colors font-medium";
+    const baseClasses = "box-border cursor-pointer flex h-[45px] items-center justify-center rounded-[8px] w-full transition-colors font-medium";
     const variantClasses = {
         primary: "bg-[#c8102e] hover:bg-[#b00f29] active:bg-[#a00d25] text-white", //primary button
         secondary: "bg-[#eeeeee] hover:bg-[#e0e0e0] active:bg-[#d5d5d5] text-black" //secondary button
@@ -182,6 +182,25 @@ export default function FrameRegister() {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   };
 
+  const validatePassword = (password: string) => {
+    if (password.length < 8) {
+      return "Password must be at least 8 characters long.";
+    }
+    if (!/[A-Z]/.test(password)) {
+      return "Password must contain at least one uppercase letter.";
+    }
+    if (!/[a-z]/.test(password)) {
+      return "Password must contain at least one lowercase letter.";
+    }
+    if (!/[0-9]/.test(password)) {
+      return "Password must contain at least one number.";
+    }
+    if (!/[!@#$%^&*]/.test(password)) {
+      return "Password must contain at least one special character (!@#$%^&*).";
+    }
+    return null; //No error
+  };
+
   const handleRegister = async () => {
     setError("");
 
@@ -193,6 +212,12 @@ export default function FrameRegister() {
     if (!validateEmail(email)) {
       setError("Invalid email format.");
       return;
+    }
+
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+        setError(passwordError);
+        return;
     }
 
     setIsLoading(true); //Start loading state
@@ -269,6 +294,17 @@ export default function FrameRegister() {
             Back to Login
         </ActionButton>
       </div>
+
+      {/* LEGAL TEXT */}
+      <div className="mt-6 w-full text-center">
+        <p className="text-xs md:text-sm text-gray-500">
+          By clicking register, you agree to our{' '}
+          <span className="font-medium text-black">Terms of Service</span>
+          {' '}and{' '}
+          <span className="font-medium text-black">Privacy Policy</span>.
+        </p>
+      </div>
+
     </div>
   );
 }

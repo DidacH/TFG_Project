@@ -78,7 +78,7 @@ interface ActionButtonProps {
 }
 
 function ActionButton({ onClick, children, variant = 'primary', IsLoading = false }: ActionButtonProps) {
-    const baseClasses = "box-border cursor-pointer flex h-[50px] items-center justify-center rounded-[8px] w-full transition-colors font-medium";
+    const baseClasses = "box-border cursor-pointer flex h-[45px] items-center justify-center rounded-[8px] w-full transition-colors font-medium";
     const variantClasses = {
         primary: "bg-[#c8102e] hover:bg-[#b00f29] active:bg-[#a00d25] text-white",
         secondary: "bg-[#eeeeee] hover:bg-[#e0e0e0] active:bg-[#d5d5d5] text-black"

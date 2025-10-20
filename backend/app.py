@@ -36,15 +36,17 @@ ADMIN_REGISTRATION_KEY = os.getenv("ADMIN_KEY")
 SIGNATURE_KEY = os.getenv("SIGNATURE_KEY").encode('utf-8')
 
 
+#Dynamic role fetching for registration
 @app.route('/api/roles', methods=['GET'])
 def api_get_roles():
     """Obtain all available roles from database"""
     try:
-        roles = get_all_roles()
+        roles = get_all_roles() #Fetch roles from database
         return jsonify(roles), 200
     except Exception as e:
         return jsonify({'message': f'Internal server error: {e}'}), 500
 
+#User registration endpoint
 @app.route('/api/register', methods=['POST'])
 def api_register():
     data = request.get_json()
@@ -70,6 +72,7 @@ def api_register():
     except Exception as e:
         return jsonify({'message': f'Internal server error: {e}'}), 500
 
+#User login endpoint
 @app.route('/api/login', methods=['POST'])
 def api_login():
     data = request.get_json()
