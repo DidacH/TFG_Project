@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 import time
 from dotenv import load_dotenv
 import os
+import re
 
 load_dotenv()  #Load environment variables from .env file
 
@@ -21,10 +22,7 @@ app = Flask(
     static_folder='../frontend/static'
     )
 
-app.secret_key = os.getenv("SECRET_KEY")
-
 CORS(app, supports_credentials=True) #Allow communication between frontend and backend
-SIGNATURE_KEY = os.getenv("SIGNATURE_KEY").encode('utf-8')
 
 app.config.update(
     SESSION_COOKIE_SECURE=True,
@@ -32,6 +30,7 @@ app.config.update(
     SESSION_COOKIE_SAMESITE='Lax'
 )
 
+app.secret_key = os.getenv("SECRET_KEY")
 ADMIN_REGISTRATION_KEY = os.getenv("ADMIN_KEY")
 SIGNATURE_KEY = os.getenv("SIGNATURE_KEY").encode('utf-8')
 
@@ -45,6 +44,21 @@ def api_get_roles():
         return jsonify(roles), 200
     except Exception as e:
         return jsonify({'message': f'Internal server error: {e}'}), 500
+    
+
+def validate_password(password):
+    """Checks if the password meets the minimum security requirements."""
+    if len(password) < 8:
+        return "Password must be at least 8 characters long."
+    if not re.search(r"[A-Z]", password):
+        return "Password must contain at least one uppercase letter."
+    if not re.search(r"[a-z]", password):
+        return "Password must contain at least one lowercase letter."
+    if not re.search(r"[0-9]", password):
+        return "Password must contain at least one number."
+    if not re.search(r"[!@#$%^&*.]", password):
+        return "Password must contain at least one special character (!@#$%^&*)."
+    return None # No error
 
 #User registration endpoint
 @app.route('/api/register', methods=['POST'])
@@ -54,12 +68,23 @@ def api_register():
     email = data.get('email')
     password = data.get('password')
     role = data.get('role')
+    admin_key = data.get('admin_key')
 
     if not all([name, email, password, role]):
         return jsonify({'message': 'All fields must be filled in'}), 400
+    
+    if role == 'Admin':
+        if not admin_key:
+            return jsonify({'message': 'Admin key is required for admin registration'}), 400
+        if admin_key != ADMIN_REGISTRATION_KEY:
+            return jsonify({'message': 'Invalid admin key'}), 403
 
     if get_user_by_email(email):
         return jsonify({'message': 'This email is already registered for another account'}), 409
+    
+    password_error = validate_password(password)
+    if password_error:
+        return jsonify({'message': password_error}), 400
 
     try:
         user_id = str(uuid.uuid4())
@@ -67,10 +92,23 @@ def api_register():
         registered_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         save_user(user_id, name, email, password, role, qr_image, last_qr_time, registered_at)
+
+        try:
+            #Create JWT token
+            payload = {
+                'user_id': user_id,
+                'role': role,
+                'exp': datetime.now(timezone.utc) + timedelta(hours=1)  #Token expires in 1 hour
+            }
+            token = jwt.encode(payload, app.secret_key, algorithm="HS256")
+
+            return jsonify({'token': token, 'role': role}), 201
+        except Exception as e:
+            return jsonify({'message': f'Error in token generation: {e}'}), 500
         
-        return jsonify({'message': 'User successfully registered!'}), 201
     except Exception as e:
         return jsonify({'message': f'Internal server error: {e}'}), 500
+
 
 #User login endpoint
 @app.route('/api/login', methods=['POST'])
@@ -96,9 +134,25 @@ def api_login():
         }
         token = jwt.encode(payload, app.secret_key, algorithm="HS256")
 
-        return jsonify({'token': token}), 200
+        return jsonify({'token': token, 'role': user['role']}), 200
     except Exception as e:
         return jsonify({'message': f'Error in token generation: {e}'}), 500
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

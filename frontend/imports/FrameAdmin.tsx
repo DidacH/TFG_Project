@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 
-export default function FrameDashboard() {
+export default function FrameAdmin() {
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -14,7 +14,7 @@ export default function FrameDashboard() {
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
       <div className="w-full max-w-2xl p-8 bg-white rounded-xl shadow-md text-center">
         <h1 className="text-3xl md:text-4xl font-bold text-gray-800">
-          Welcome to your Dashboard!
+          Welcome to the Admin page!
         </h1>
         <p className="mt-4 text-lg text-gray-600">
           You logged in successfully.
