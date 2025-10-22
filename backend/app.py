@@ -13,6 +13,7 @@ import time
 from dotenv import load_dotenv
 import os
 import re
+from functools import wraps
 
 load_dotenv()  #Load environment variables from .env file
 
@@ -33,6 +34,156 @@ app.config.update(
 app.secret_key = os.getenv("SECRET_KEY")
 ADMIN_REGISTRATION_KEY = os.getenv("ADMIN_KEY")
 SIGNATURE_KEY = os.getenv("SIGNATURE_KEY").encode('utf-8')
+
+
+#JWT Authentication Decorator
+#This decorator checks for a valid JWT in the Authorization header
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+        #jwt is passed in the request header
+        if 'Authorization' in request.headers:
+            auth_header = request.headers['Authorization']
+            try:
+                #Split 'Bearer <token>'
+                token = auth_header.split(" ")[1]
+            except IndexError:
+                return jsonify({'message': 'Bearer token malformed'}), 401
+
+        #return 401 if token is not passed
+        if not token:
+            return jsonify({'message': 'Token is missing!'}), 401
+
+        try:
+            #decoding the payload to fetch the stored details
+            data = jwt.decode(token, app.secret_key, algorithms=["HS256"])
+            #Pass user_id and role to the decorated function
+            kwargs['user_id'] = data['user_id']
+            kwargs['role'] = data['role']
+        except jwt.ExpiredSignatureError:
+            return jsonify({'message': 'Token has expired!'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'message': 'Token is invalid!'}), 401
+        except Exception as e:
+             return jsonify({'message': f'Token error: {str(e)}'}), 401
+
+        #returns the current logged in users context to the routes
+        return f(*args, **kwargs)
+
+    return decorated
+
+
+#API Endpoint for Dashboard Data
+@app.route('/api/dashboard-data', methods=['GET'])
+@token_required
+def api_dashboard_data(user_id, role): #user_id and role are passed by the decorator
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        #Fetch user data
+        cur.execute('SELECT name, email, role, qr_image, last_qr_time FROM users WHERE id = %s', (user_id,))
+        user = cur.fetchone()
+
+        if not user:
+            cur.close()
+            conn.close()
+            return jsonify({'message': 'User not found'}), 404
+
+        #Calculate remaining QR time
+        last_qr_time = int(user['last_qr_time']) if user['last_qr_time'] else 0
+        qr_lifetime = 30 #seconds - should match frontend constant
+        now = int(time.time())
+        remaining = qr_lifetime - (now - last_qr_time)
+        if remaining < 0:
+            remaining = 0 #Clamp at 0
+
+        #Convert QR image blob to base64
+        try:
+            image = Image.open(BytesIO(user['qr_image']))
+            buffer = BytesIO()
+            image.save(buffer, format="PNG")
+            qr_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        except Exception as img_err:
+             print(f"Error processing QR image: {img_err}") #Log error
+             qr_base64 = None # Send null if image processing fails
+
+        #Fetch last successful access
+        cur.execute('''
+            SELECT access_time, area FROM logs
+            WHERE user_id = %s AND entry_allowed = 1
+            ORDER BY access_time DESC LIMIT 1
+        ''', (user_id,))
+        last_access_record = cur.fetchone()
+        last_access_str = f"{last_access_record['access_time']} / {last_access_record['area']}" if last_access_record else None
+
+        #Fetch access history (successful accesses)
+        cur.execute('''
+            SELECT access_time, area FROM logs
+            WHERE user_id = %s AND entry_allowed = 1
+            ORDER BY access_time DESC
+        ''', (user_id,))
+        history_records = cur.fetchall()
+        history_list = [f"{row['access_time']} / {row['area']}" for row in history_records] if history_records else []
+
+        cur.close()
+        conn.close()
+
+        #Prepare response data
+        response_data = {
+            'name': user['name'],
+            'email': user['email'],
+            'role': user['role'],
+            'qr_base64': qr_base64,
+            'remaining': remaining,
+            'last_access': last_access_str,
+            'history': history_list
+        }
+
+        return jsonify(response_data), 200
+
+    except Exception as e:
+        #Log the exception e
+        print(f"Error fetching dashboard data: {e}") #Print error for debugging
+        #Close connection if it was opened and an error occurred
+        if 'conn' in locals() and conn:
+            cur.close()
+            conn.close()
+        return jsonify({'message': f'Internal server error: {str(e)}'}), 500
+
+
+#API Endpoint to refresh QR code
+@app.route('/api/refresh-qr', methods=['GET'])
+@token_required
+def api_refresh_qr(user_id, role): #user_id and role are passed by the decorator
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        #Generate new QR
+        new_qr_bytes, timestamp = generate_qr(user_id, SIGNATURE_KEY)
+
+        #Update database
+        cur.execute("UPDATE users SET qr_image = %s, last_qr_time = %s WHERE id = %s",
+                   (new_qr_bytes, str(timestamp), user_id))
+        conn.commit()
+
+        cur.close()
+        conn.close()
+
+        #Convert new QR to base64 for response
+        qr_base64 = base64.b64encode(new_qr_bytes).decode("utf-8")
+
+        return jsonify({"qr_base64": qr_base64}), 200
+
+    except Exception as e:
+        #Log the exception e
+        print(f"Error refreshing QR code: {e}") #Print error for debugging
+        if 'conn' in locals() and conn:
+           cur.close()
+           conn.close()
+        return jsonify({'message': f'Internal server error: {str(e)}'}), 500
 
 
 #Dynamic role fetching for registration
