@@ -173,16 +173,16 @@ export default function FrameDashboard() {
         <div className="flex flex-col min-h-screen bg-background">
 
             {/* Header Section */}
-            <div className="fixed top-0 left-0 right-0 z-40 bg-background pt-6 md:pt-8 shadow-sm">
+            <div className="fixed top-0 left-0 right-0 z-40 bg-background pt-6 md:pt-8">
                 {/*Container for alignment & max-width */}
-                <div className="w-full max-w-xs md:max-w-md mx-auto px-4">
+                <div className="w-full mx-auto px-4 sm:px-6 lg:px-10">
                     {/* Inner container for Title and Button alignment */}
                     <div className="relative flex justify-center items-center h-12 md:h-14 mb-3">
                         {/*Profile Button - Positioned left within the padded container */}
                         <button
                             onClick={navigateToProfile}
                             aria-label="User Profile"
-                            className="absolute left-0 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 md:w-12 md:h-12 bg-[#eeeeee] hover:bg-[#e0e0e0] active:bg-[#d5d5d5] rounded-full transition-colors" //
+                            className="absolute left-0 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 md:w-12 md:h-12 bg-[#eeeeee] hover:bg-[#e0e0e0] active:bg-[#d5d5d5] rounded-full transition-colors"
                         >
                             <UserCircle className="w-6 h-6 md:w-7 md:h-7 text-black" /> {/* */}
                         </button>
@@ -216,7 +216,7 @@ export default function FrameDashboard() {
                         <img
                             src={`data:image/png;base64,${qr_base64}`} //
                             alt="User QR Code"
-                            className="w-[220px] h-[220px] md:w-[250px] md:h-[250px] border-4 border-gray-200 rounded-lg p-1 shadow-md bg-white" //
+                            className="w-[220px] h-[220px] md:w-[250px] md:h-[250px] border-4 border-gray-200 rounded-lg p-1 shadow-sm bg-white" //
                         />
                     ) : (
                         <div className="w-[220px] h-[220px] md:w-[250px] md:h-[250px] flex items-center justify-center bg-gray-100 rounded-lg">
@@ -227,7 +227,6 @@ export default function FrameDashboard() {
                     {/*QR Refresh Timer and Manual Refresh Button*/}
                     <div className="flex flex-col items-center gap-2 pt-2 w-full">
                         <div className="text-base md:text-lg font-medium text-black flex items-center justify-center gap-1.5">
-                            <Clock size={18} className="text-gray-500" /> {/* */}
                             <span className="text-gray-600">Refreshes in</span>
                             <span className="font-bold text-[#c8102e]">{remainingTime}</span> {/* */}
                             <span className="text-gray-600">seconds</span>
