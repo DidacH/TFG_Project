@@ -184,12 +184,12 @@ export default function FrameDashboard() {
                             aria-label="User Profile"
                             className="absolute left-0 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 md:w-12 md:h-12 bg-[#eeeeee] hover:bg-[#e0e0e0] active:bg-[#d5d5d5] rounded-full transition-colors"
                         >
-                            <UserCircle className="w-6 h-6 md:w-7 md:h-7 text-black" /> {/* */}
+                            <UserCircle className="w-6 h-6 md:w-7 md:h-7 text-black" />
                         </button>
                         {/*Header Title */}
                         <h1 className="text-xl md:text-2xl font-semibold text-black text-center">
                             Your Dashboard
-                        </h1> {/* */}
+                        </h1>
                     </div>
                      {/* Separator */}
                      <div className="border-b border-[#e6e6e6]"></div>
@@ -198,29 +198,29 @@ export default function FrameDashboard() {
 
             {/*Main Content Area */}
             {/* Added px-4 here to match header padding */}
-            <div className="flex-grow w-full flex flex-col items-center gap-6 md:gap-8 px-4 pb-8 pt-28 md:pt-32"> {/* */}
+            <div className="flex-grow w-full flex flex-col items-center gap-6 md:gap-8 px-4 pb-8 pt-8 md:pt-12">
 
                 {/*Welcome Message */}
                 <h2 className="text-2xl md:text-3xl font-semibold text-black text-center mt-4 md:mt-6">
                     Welcome, <span className="text-[#c8102e]">{name}</span>!
-                </h2> {/* */}
+                </h2>
 
                 {/*QR Code Section */}
                 <div className="w-full flex flex-col items-center gap-4">
                     <h3 className="text-xl md:text-2xl font-semibold text-gray-800 flex items-center gap-2">
                         Your QR Code
-                    </h3> {/* */}
+                    </h3>
 
                     {/*Display QR code image or a loader if not available*/}
                     {qr_base64 ? (
                         <img
-                            src={`data:image/png;base64,${qr_base64}`} //
+                            src={`data:image/png;base64,${qr_base64}`}
                             alt="User QR Code"
                             className="w-[220px] h-[220px] md:w-[250px] md:h-[250px] border-4 border-gray-200 rounded-lg p-1 shadow-sm bg-white" //
                         />
                     ) : (
                         <div className="w-[220px] h-[220px] md:w-[250px] md:h-[250px] flex items-center justify-center bg-gray-100 rounded-lg">
-                            <Loader2 className="h-8 w-8 animate-spin text-[#c8102e]" /> {/* */}
+                            <Loader2 className="h-8 w-8 animate-spin text-[#c8102e]" />
                         </div>
                     )}
 
@@ -228,16 +228,16 @@ export default function FrameDashboard() {
                     <div className="flex flex-col items-center gap-2 pt-2 w-full">
                         <div className="text-base md:text-lg font-medium text-black flex items-center justify-center gap-1.5">
                             <span className="text-gray-600">Refreshes in</span>
-                            <span className="font-bold text-[#c8102e]">{remainingTime}</span> {/* */}
+                            <span className="font-bold text-[#c8102e]">{remainingTime}</span>
                             <span className="text-gray-600">seconds</span>
                         </div>
                         {/*Manual refresh button*/}
                         <button
-                            onClick={() => refreshQr(false)} //
+                            onClick={() => refreshQr(false)}
                             className="text-sm md:text-base font-medium text-gray-600 hover:text-[#c8102e] transition-colors flex items-center gap-1 mt-1"
                             aria-label="Refresh QR Code Manually"
                         >
-                            <RefreshCw size={16} className={remainingTime < 5 ? "animate-spin" : ""} /> {/* */}
+                            <RefreshCw size={16} className={remainingTime < 5 ? "animate-spin" : ""} />
                             Manual Refresh
                         </button>
                     </div>
@@ -248,15 +248,15 @@ export default function FrameDashboard() {
                     <h4 className="text-lg font-semibold text-gray-800 mb-1">Last Access</h4>
                     <p className="text-base text-[#828282]">
                         {/* Display last access time or a default message */}
-                        {last_access || "No access recorded yet."} {/* */}
+                        {last_access || "No access recorded yet."}
                     </p>
                 </div>
 
                 {/* Logout Button */}
-                <div className="w-full max-w-xs md:max-w-sm mt-6 md:mt-6"> {/* Container to control width */} {/* */}
+                <div className="w-full max-w-xs md:max-w-sm mt-6 md:mt-6"> {/* Container to control width */}
                   <ActionButton onClick={handleLogout} variant="primary" className="w-full">
                     Log Out
-                  </ActionButton> {/* */}
+                  </ActionButton>
                 </div>
             </div> {/* End Main Content Area */}
         </div> //End Main container
