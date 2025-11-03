@@ -140,7 +140,6 @@ export default function FrameDashboard() {
   //Loading and Error States
   if (loading) {
     return (
-        //<div className="w-full min-h-screen flex items-center justify-center bg-gray-100 p-4">
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-100 p-4">
             <Loader2 className="h-10 w-10 animate-spin text-[#c8102e]" />
             <p className="ml-4 text-gray-700 font-sans font-medium">Loading Dashboard...</p>
