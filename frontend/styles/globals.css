@@ -145,3 +145,21 @@
 html {
   font-size: var(--font-size);
 }
+
+
+/* *** Section to hide native browser icons in the password box *** */
+
+/* For Chromium-based browsers */
+input[type="password"]::-webkit-reveal,
+input[type="password"]::-webkit-clear-button {
+  display: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* For internet explorer and old versions of Edge */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+  appearance: none;
+}
