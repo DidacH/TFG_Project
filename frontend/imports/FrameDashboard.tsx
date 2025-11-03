@@ -46,7 +46,6 @@ export default function FrameDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [remainingTime, setRemainingTime] = useState(QR_REFRESH_INTERVAL);
-  const [showHistory, setShowHistory] = useState(false);
 
   //Function to get JWT token
   const getToken = () => localStorage.getItem('token');
@@ -60,7 +59,7 @@ export default function FrameDashboard() {
   }, [navigate]);
 
   //Fetch or refresh QR code data
-  const refreshQr = useCallback(async (isInitialLoad: boolean = false) => {
+  const refreshQr = useCallback(async (isInitialLoad: boolean = false, resetTimer: boolean = false) => {
     if (!getToken()) {
         handleLogout();
         return;
@@ -92,9 +91,13 @@ export default function FrameDashboard() {
             //Use the initial remaining time from the server for the first countdown
             setRemainingTime(json.remaining); 
         } else {
-            //For refresh, only update qr_base64 and reset countdown
+            //For refresh, only update qr_base64
             setData(prev => prev ? ({ ...prev, qr_base64: json.qr_base64 }) : null);
-            setRemainingTime(QR_REFRESH_INTERVAL);
+
+            //Reset the countdown timer if specified (only for manual refresh since for auto-refresh it's handled by the setInterval timer')
+            if (resetTimer) {
+                setRemainingTime(QR_REFRESH_INTERVAL);
+            }
         }
         setError(null);
     } catch (err: any) {
@@ -108,21 +111,27 @@ export default function FrameDashboard() {
 
   //Countdown timer effect
   useEffect(() => {
-    if (loading || error || !data) return; //Don't start timer if loading, error, or data missing
+    if (loading || error) return; //Don't start timer if loading or error state
+
+    if (!data) return;
 
     const timer = setInterval(() => {
         setRemainingTime(prevTime => {
-            if (prevTime <= 1) {
-                //Time's up, refresh QR
-                refreshQr(false);
-                return QR_REFRESH_INTERVAL;
+            if (prevTime === 2) {
+                //Time is about to run up, start refreshing the QR
+                refreshQr(false, false); //Call refreshQr with 'resetTimer = false' (handled manually when time left is 1 or less)
             }
+
+            if (prevTime <= 1) {
+                return QR_REFRESH_INTERVAL; //Reset timer after refresh
+            }
+
             return prevTime - 1;
         });
     }, 1000);
 
     return () => clearInterval(timer); //Cleanup on unmount or dependency change
-  }, [loading, error, data, refreshQr]);
+  }, [loading, error, data]);
 
 
   //Initial data check and fetch on mount
@@ -134,7 +143,7 @@ export default function FrameDashboard() {
     }
     refreshQr(true);
     //The dependency array ensures this runs once after initial mount
-  }, [refreshQr, handleLogout]);
+  }, [handleLogout]);
 
 
   //Loading and Error States
@@ -233,7 +242,7 @@ export default function FrameDashboard() {
                         </div>
                         {/*Manual refresh button*/}
                         <button
-                            onClick={() => refreshQr(false)}
+                            onClick={() => refreshQr(false, true)}
                             className="text-sm md:text-base font-medium text-gray-600 hover:text-[#c8102e] transition-colors flex items-center gap-1 mt-1"
                             aria-label="Refresh QR Code Manually"
                         >
