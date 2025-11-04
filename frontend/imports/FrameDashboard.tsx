@@ -46,6 +46,7 @@ export default function FrameDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [remainingTime, setRemainingTime] = useState(QR_REFRESH_INTERVAL);
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
 
   //Function to get JWT token
   const getToken = () => localStorage.getItem('token');
@@ -242,11 +243,21 @@ export default function FrameDashboard() {
                         </div>
                         {/*Manual refresh button*/}
                         <button
-                            onClick={() => refreshQr(false, true)}
+                            onClick={async () => {
+                                //Activate animation on click
+                                setIsManualRefreshing(true);
+                                //Call the refresh function and reset timer
+                                await refreshQr(false);
+                                //Resert the countdown timer
+                                setRemainingTime(QR_REFRESH_INTERVAL);
+                                //Deactivate the animation on completion
+                                setIsManualRefreshing(false);
+                            }}
                             className="text-sm md:text-base font-medium text-gray-600 hover:text-[#c8102e] transition-colors flex items-center gap-1 mt-1"
                             aria-label="Refresh QR Code Manually"
+                            disabled={isManualRefreshing || remainingTime > (QR_REFRESH_INTERVAL - 3)} //Disable button while loading and prevent spam
                         >
-                            <RefreshCw size={16} className={remainingTime < 5 ? "animate-spin" : ""} />
+                            <RefreshCw size={16} className={(remainingTime < 5 || isManualRefreshing)? "animate-spin" : ""} />
                             Manual Refresh
                         </button>
                     </div>
