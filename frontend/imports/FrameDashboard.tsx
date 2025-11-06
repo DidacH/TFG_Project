@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef} from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, RefreshCw, Clock, UserCircle } from "lucide-react";
+import { Loader2, RefreshCw, UserCircle } from "lucide-react";
 import { cn } from "../components/ui/utils";
 
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -47,6 +47,10 @@ export default function FrameDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [remainingTime, setRemainingTime] = useState(QR_REFRESH_INTERVAL);
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false); //async state to indicate ongoing refresh
+  const isRefreshingRef = useRef(false); //Ref to track ongoing refresh state (sychronous)
+  const isInitialLoadDone = useRef(false); //Ref to track if initial load is done
+  const prevQrBase64Ref = useRef<string | null | undefined>(); //Ref to store previous QR code for comparison
 
   //Function to get JWT token
   const getToken = () => localStorage.getItem('token');
@@ -60,11 +64,17 @@ export default function FrameDashboard() {
   }, [navigate]);
 
   //Fetch or refresh QR code data
-  const refreshQr = useCallback(async (isInitialLoad: boolean = false, resetTimer: boolean = false) => {
+  const refreshQr = useCallback(async (isInitialLoad: boolean = false) => {
     if (!getToken()) {
         handleLogout();
         return;
     }
+
+    if (isRefreshingRef.current && !isInitialLoad) return; //Prevent overlapping refreshes
+
+    isRefreshingRef.current = true;
+    setIsRefreshing(true);
+
     try {
         //Use the correct API endpoint based on whether it is initial load or just QR refresh
         const endpoint = isInitialLoad ? '/api/dashboard-data' : '/api/refresh-qr'; 
@@ -94,17 +104,14 @@ export default function FrameDashboard() {
         } else {
             //For refresh, only update qr_base64
             setData(prev => prev ? ({ ...prev, qr_base64: json.qr_base64 }) : null);
-
-            //Reset the countdown timer if specified (only for manual refresh since for auto-refresh it's handled by the setInterval timer')
-            if (resetTimer) {
-                setRemainingTime(QR_REFRESH_INTERVAL);
-            }
         }
         setError(null);
     } catch (err: any) {
         console.error(`Error ${isInitialLoad ? 'loading' : 'refreshing'} data:`, err);
         setError(err.message);
     } finally {
+        isRefreshingRef.current = false;
+        setIsRefreshing(false);
         if (isInitialLoad) setLoading(false);
     }
   }, [handleLogout]);
@@ -112,19 +119,16 @@ export default function FrameDashboard() {
 
   //Countdown timer effect
   useEffect(() => {
-    if (loading || error) return; //Don't start timer if loading or error state
-
-    if (!data) return;
+    if (loading || error || !data || isRefreshing) return; //Don't start timer if loading state, error state, or refreshing
 
     const timer = setInterval(() => {
         setRemainingTime(prevTime => {
-            if (prevTime === 2) {
-                //Time is about to run up, start refreshing the QR
-                refreshQr(false, false); //Call refreshQr with 'resetTimer = false' (handled manually when time left is 1 or less)
-            }
 
-            if (prevTime <= 1) {
-                return QR_REFRESH_INTERVAL; //Reset timer after refresh
+           if (prevTime <= 0) return 0; //Prevent negative time
+
+           if (prevTime === 2 && !isRefreshingRef.current) {
+                //Time is about to run up, start refreshing the QR
+                refreshQr(false); //Call refreshQr
             }
 
             return prevTime - 1;
@@ -132,7 +136,34 @@ export default function FrameDashboard() {
     }, 1000);
 
     return () => clearInterval(timer); //Cleanup on unmount or dependency change
-  }, [loading, error, data]);
+  }, [loading, error, data, isRefreshing, refreshQr]);
+
+  useEffect(() => {
+    const currentQr = data?.qr_base64;
+    const prevQr = prevQrBase64Ref.current;
+
+    //If we now have a QR code, but didn't have one before (means it's the initial load)
+    if (currentQr && !prevQr) {
+        
+        //Mark initial load as done
+        isInitialLoadDone.current = true; 
+
+        //Edge case: If remaining time is <=2, refresh immediately
+        if (data.remaining <= 2 && !isRefreshingRef.current) {
+            refreshQr(false);
+        }
+    }
+
+    //If we have both current and previous QR codes, and they differ
+    if (currentQr && prevQr && currentQr !== prevQr) {
+        //reset timer
+        setRemainingTime(QR_REFRESH_INTERVAL);
+    }
+    
+    //Store the current QR for next comparison
+    prevQrBase64Ref.current = currentQr;
+
+  }, [data?.qr_base64, data?.remaining, refreshQr]);
 
 
   //Initial data check and fetch on mount
@@ -257,7 +288,7 @@ export default function FrameDashboard() {
                             aria-label="Refresh QR Code Manually"
                             disabled={isManualRefreshing || remainingTime > (QR_REFRESH_INTERVAL - 3)} //Disable button while loading and prevent spam
                         >
-                            <RefreshCw size={16} className={(remainingTime < 5 || isManualRefreshing)? "animate-spin" : ""} />
+                            <RefreshCw size={16} className={(remainingTime < 3 || isManualRefreshing)? "animate-spin" : ""} />
                             Manual Refresh
                         </button>
                     </div>
