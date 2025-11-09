@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef} from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, RefreshCw, UserCircle } from "lucide-react";
+import { Loader2, RefreshCw, UserCircle, LogOut } from "lucide-react";
 import { cn } from "../components/ui/utils";
 
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -20,9 +20,10 @@ interface ActionButtonProps {
     variant?: 'primary' | 'secondary';
     isLoading?: boolean;
     className?: string;
+    icon?: React.ElementType;
 }
 
-function ActionButton({ onClick, children, variant = 'primary', isLoading = false, className = '' }: ActionButtonProps) {
+function ActionButton({ onClick, children, variant = 'primary', isLoading = false, className = '', icon: Icon }: ActionButtonProps) {
     const baseClasses = "box-border cursor-pointer flex h-[50px] items-center justify-center rounded-[8px] w-full transition-colors font-medium";
     const variantClasses = {
         primary: "bg-[#c8102e] hover:bg-[#b00f29] active:bg-[#a00d25] text-white",
@@ -34,7 +35,12 @@ function ActionButton({ onClick, children, variant = 'primary', isLoading = fals
             className={cn(baseClasses, variantClasses[variant], isLoading ? 'opacity-75 cursor-not-allowed' : 'shadow-lg hover:shadow-xl', "text-lg md:text-xl", className)}
             disabled={isLoading}
         >
-            {isLoading ? <Loader2 className="animate-spin h-6 w-6" /> : children}
+            {isLoading ? <Loader2 className="animate-spin h-6 w-6" /> : (
+                <div className="flex items-center justify-center gap-2">
+                    {Icon && <Icon className="h-5 w-5" />}
+                    <span>{children}</span>
+                </div>
+            )}
         </button>
     );
 }
@@ -305,7 +311,7 @@ export default function FrameDashboard() {
 
                 {/* Logout Button */}
                 <div className="w-full max-w-xs md:max-w-sm mt-6 md:mt-6"> {/* Container to control width */}
-                  <ActionButton onClick={handleLogout} variant="primary" className="w-full">
+                  <ActionButton onClick={handleLogout} variant="primary" className="w-full" icon={LogOut}>
                     Log Out
                   </ActionButton>
                 </div>

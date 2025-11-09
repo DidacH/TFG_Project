@@ -190,10 +190,10 @@ if __name__ == "__main__":
 
     
     #Tables creation
-    # init_roles_table()
-    # init_db()
-    # init_logs_table()
-    # print("Database initialized.")
+    init_roles_table()
+    init_db()
+    init_logs_table()
+    print("Database initialized.")
 
     #Tables deletion
     # delete_tables()

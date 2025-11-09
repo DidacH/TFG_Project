@@ -94,7 +94,13 @@ def admin_required(f):
 def get_last3_logs():
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM logs ORDER BY access_time DESC LIMIT 3")
+    # SOLUCIÓ: Seleccionem els camps de 'logs', incloent user_id
+    cur.execute("""
+        SELECT user_id, role, access_time, entry_allowed, area
+        FROM logs
+        ORDER BY access_time DESC
+        LIMIT 3
+    """)
     logs = cur.fetchall()
     cur.close()
     conn.close()
@@ -103,7 +109,12 @@ def get_last3_logs():
 def get_all_logs():
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM logs ORDER BY access_time DESC")
+    # SOLUCIÓ: Seleccionem només de la taula 'logs'
+    cur.execute("""
+        SELECT user_id, role, access_time, entry_allowed, area, reason
+        FROM logs
+        ORDER BY access_time DESC
+    """)
     logs = cur.fetchall()
     cur.close()
     conn.close()
@@ -112,7 +123,7 @@ def get_all_logs():
 def get_last_3_users():
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('SELECT * FROM users ORDER BY registered_at DESC LIMIT 3')
+    cur.execute('SELECT name, email, role, registered_at FROM users ORDER BY registered_at DESC LIMIT 3')
     users = cur.fetchall()
     cur.close()
     conn.close()
@@ -121,7 +132,7 @@ def get_last_3_users():
 def get_all_users():
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('SELECT * FROM users ORDER BY registered_at DESC')
+    cur.execute('SELECT name, email, role, registered_at FROM users ORDER BY registered_at DESC')
     users = cur.fetchall()
     cur.close()
     conn.close()
@@ -463,6 +474,10 @@ def api_download_users(user_id, role):
         print(f"Error downloading users: {e}")
         return jsonify({'message': f'Internal server error: {str(e)}'}), 500
 
+
+#=================================================
+# === APPLICATION START ===
+#=================================================
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
