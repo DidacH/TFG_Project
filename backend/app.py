@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, Response, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, flash, Response, jsonify, send_file
 from flask_cors import CORS
 import jwt
 from QR_generation_validation import generate_qr
@@ -19,9 +19,7 @@ load_dotenv()  #Load environment variables from .env file
 
 app = Flask(
     __name__,
-    template_folder='../frontend/templates',
-    static_folder='../frontend/static'
-    )
+)
 
 CORS(app, supports_credentials=True) #Allow communication between frontend and backend
 
@@ -35,6 +33,11 @@ app.secret_key = os.getenv("SECRET_KEY")
 ADMIN_REGISTRATION_KEY = os.getenv("ADMIN_KEY")
 SIGNATURE_KEY = os.getenv("SIGNATURE_KEY").encode('utf-8')
 
+
+
+#=================================================
+# === AUTHENTICATION DECORATORS ===
+#=================================================
 
 #JWT Authentication Decorator
 #This decorator checks for a valid JWT in the Authorization header
@@ -73,6 +76,169 @@ def token_required(f):
 
     return decorated
 
+
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        # 'role' és injectat per @token_required
+        if 'role' not in kwargs or kwargs['role'] != 'Admin':
+            return jsonify({'message': 'Admin access required'}), 403
+        return f(*args, **kwargs)
+    return decorated
+
+
+#=================================================
+# === DATA FETCHING FUNCTIONS ===
+#=================================================
+
+def get_last3_logs():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM logs ORDER BY access_time DESC LIMIT 3")
+    logs = cur.fetchall()
+    cur.close()
+    conn.close()
+    return logs
+
+def get_all_logs():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM logs ORDER BY access_time DESC")
+    logs = cur.fetchall()
+    cur.close()
+    conn.close()
+    return logs
+
+def get_last_3_users():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM users ORDER BY registered_at DESC LIMIT 3')
+    users = cur.fetchall()
+    cur.close()
+    conn.close()
+    return users
+
+def get_all_users():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM users ORDER BY registered_at DESC')
+    users = cur.fetchall()
+    cur.close()
+    conn.close()
+    return users
+
+
+#=================================================
+# === PUBLIC API ENDPOINTS ===
+#=================================================
+
+#Dynamic role fetching for registration
+@app.route('/api/roles', methods=['GET'])
+def api_get_roles():
+    """Obtain all available roles from database"""
+    try:
+        roles = get_all_roles() #Fetch roles from database
+        return jsonify(roles), 200
+    except Exception as e:
+        return jsonify({'message': f'Internal server error: {e}'}), 500
+    
+
+def validate_password(password):
+    """Checks if the password meets the minimum security requirements."""
+    if len(password) < 8:
+        return "Password must be at least 8 characters long."
+    if not re.search(r"[A-Z]", password):
+        return "Password must contain at least one uppercase letter."
+    if not re.search(r"[a-z]", password):
+        return "Password must contain at least one lowercase letter."
+    if not re.search(r"[0-9]", password):
+        return "Password must contain at least one number."
+    if not re.search(r"[!@#$%^&*.]", password):
+        return "Password must contain at least one special character (!@#$%^&*)."
+    return None # No error
+
+#User registration endpoint
+@app.route('/api/register', methods=['POST'])
+def api_register():
+    data = request.get_json()
+    name = data.get('name')
+    email = data.get('email')
+    password = data.get('password')
+    role = data.get('role')
+    admin_key = data.get('admin_key')
+
+    if not all([name, email, password, role]):
+        return jsonify({'message': 'All fields must be filled in'}), 400
+    
+    if role == 'Admin':
+        if not admin_key:
+            return jsonify({'message': 'Admin key is required for admin registration'}), 400
+        if admin_key != ADMIN_REGISTRATION_KEY:
+            return jsonify({'message': 'Invalid admin key'}), 403
+
+    if get_user_by_email(email):
+        return jsonify({'message': 'This email is already registered for another account'}), 409
+    
+    password_error = validate_password(password)
+    if password_error:
+        return jsonify({'message': password_error}), 400
+
+    try:
+        user_id = str(uuid.uuid4())
+        qr_image, last_qr_time = generate_qr(user_id, SIGNATURE_KEY)
+        registered_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        save_user(user_id, name, email, password, role, qr_image, last_qr_time, registered_at)
+
+        try:
+            #Create JWT token
+            payload = {
+                'user_id': user_id,
+                'role': role,
+                'exp': datetime.now(timezone.utc) + timedelta(hours=1)  #Token expires in 1 hour
+            }
+            token = jwt.encode(payload, app.secret_key, algorithm="HS256")
+
+            return jsonify({'token': token, 'role': role}), 201
+        except Exception as e:
+            return jsonify({'message': f'Error in token generation: {e}'}), 500
+        
+    except Exception as e:
+        return jsonify({'message': f'Internal server error: {e}'}), 500
+
+
+#User login endpoint
+@app.route('/api/login', methods=['POST'])
+def api_login():
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password')
+
+    if not email or not password:
+        return jsonify({'message': 'All fields must be filled in'}), 400
+
+    user = get_user_by_email(email)
+
+    if not user or not check_password(password, user['password']):
+        return jsonify({'message': 'Invalid credentials'}), 401
+
+    try:
+        #Create JWT token
+        payload = {
+            'user_id': user['id'],
+            'role': user['role'],
+            'exp': datetime.now(timezone.utc) + timedelta(hours=1)  #Token expires in 1 hour
+        }
+        token = jwt.encode(payload, app.secret_key, algorithm="HS256")
+
+        return jsonify({'token': token, 'role': user['role']}), 200
+    except Exception as e:
+        return jsonify({'message': f'Error in token generation: {e}'}), 500
+    
+
+#=================================================
+# === PROTECTED API ENDPOINTS (USER) ===
+#=================================================
 
 #API Endpoint for Dashboard Data
 @app.route('/api/dashboard-data', methods=['GET'])
@@ -186,544 +352,302 @@ def api_refresh_qr(user_id, role): #user_id and role are passed by the decorator
         return jsonify({'message': f'Internal server error: {str(e)}'}), 500
 
 
-#Dynamic role fetching for registration
-@app.route('/api/roles', methods=['GET'])
-def api_get_roles():
-    """Obtain all available roles from database"""
+#=================================================
+# === PROTECTED API ENDPOINTS (ADMIN) ===
+#=================================================
+
+#Endpoint for Admin Dashboard Data
+@app.route('/api/admin/dashboard-data', methods=['GET'])
+@token_required #Check for valid token (user is logged in)
+@admin_required #Check if user is admin
+def api_admin_dashboard(user_id, role):
     try:
-        roles = get_all_roles() #Fetch roles from database
-        return jsonify(roles), 200
-    except Exception as e:
-        return jsonify({'message': f'Internal server error: {e}'}), 500
-    
-
-def validate_password(password):
-    """Checks if the password meets the minimum security requirements."""
-    if len(password) < 8:
-        return "Password must be at least 8 characters long."
-    if not re.search(r"[A-Z]", password):
-        return "Password must contain at least one uppercase letter."
-    if not re.search(r"[a-z]", password):
-        return "Password must contain at least one lowercase letter."
-    if not re.search(r"[0-9]", password):
-        return "Password must contain at least one number."
-    if not re.search(r"[!@#$%^&*.]", password):
-        return "Password must contain at least one special character (!@#$%^&*)."
-    return None # No error
-
-#User registration endpoint
-@app.route('/api/register', methods=['POST'])
-def api_register():
-    data = request.get_json()
-    name = data.get('name')
-    email = data.get('email')
-    password = data.get('password')
-    role = data.get('role')
-    admin_key = data.get('admin_key')
-
-    if not all([name, email, password, role]):
-        return jsonify({'message': 'All fields must be filled in'}), 400
-    
-    if role == 'Admin':
-        if not admin_key:
-            return jsonify({'message': 'Admin key is required for admin registration'}), 400
-        if admin_key != ADMIN_REGISTRATION_KEY:
-            return jsonify({'message': 'Invalid admin key'}), 403
-
-    if get_user_by_email(email):
-        return jsonify({'message': 'This email is already registered for another account'}), 409
-    
-    password_error = validate_password(password)
-    if password_error:
-        return jsonify({'message': password_error}), 400
-
-    try:
-        user_id = str(uuid.uuid4())
-        qr_image, last_qr_time = generate_qr(user_id, SIGNATURE_KEY)
-        registered_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        last_3_logs = get_last3_logs()
+        last_3_users = get_last_3_users()
         
-        save_user(user_id, name, email, password, role, qr_image, last_qr_time, registered_at)
-
-        try:
-            #Create JWT token
-            payload = {
-                'user_id': user_id,
-                'role': role,
-                'exp': datetime.now(timezone.utc) + timedelta(hours=1)  #Token expires in 1 hour
-            }
-            token = jwt.encode(payload, app.secret_key, algorithm="HS256")
-
-            return jsonify({'token': token, 'role': role}), 201
-        except Exception as e:
-            return jsonify({'message': f'Error in token generation: {e}'}), 500
-        
-    except Exception as e:
-        return jsonify({'message': f'Internal server error: {e}'}), 500
-
-
-#User login endpoint
-@app.route('/api/login', methods=['POST'])
-def api_login():
-    data = request.get_json()
-    email = data.get('email')
-    password = data.get('password')
-
-    if not email or not password:
-        return jsonify({'message': 'All fields must be filled in'}), 400
-
-    user = get_user_by_email(email)
-
-    if not user or not check_password(password, user['password']):
-        return jsonify({'message': 'Invalid credentials'}), 401
-
-    try:
-        #Create JWT token
-        payload = {
-            'user_id': user['id'],
-            'role': user['role'],
-            'exp': datetime.now(timezone.utc) + timedelta(hours=1)  #Token expires in 1 hour
-        }
-        token = jwt.encode(payload, app.secret_key, algorithm="HS256")
-
-        return jsonify({'token': token, 'role': user['role']}), 200
-    except Exception as e:
-        return jsonify({'message': f'Error in token generation: {e}'}), 500
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def generate_unique_id():
-    return str(uuid.uuid4())
-
-#Home page
-@app.route('/')
-def home():
-    return redirect(url_for('login'))
-
-#Login page
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        email = request.form['email'].strip()
-        introduced_password = request.form['password'].strip()
-
+        #Obtain admin name
         conn = get_db_connection()
         cur = conn.cursor()
-        
-        cur.execute('SELECT * FROM users WHERE email = %s', (email,))
+        cur.execute('SELECT name FROM users WHERE id = %s', (user_id,))
         user = cur.fetchone()
         cur.close()
         conn.close()
+        admin_name = user['name'] if user else "Admin"
 
-        if user:
-            if check_password(introduced_password, user['password']):
-                session['user_id'] = user['id']
-                session['email'] = user['email']
+        #Convert results (DictRow) to standard dicts for JSON serialization
+        return jsonify({
+            'admin_name': admin_name,
+            'last_3_logs': [dict(log) for log in last_3_logs],
+            'last_3_users': [dict(user) for user in last_3_users]
+        }), 200
 
-                if user['role'] == 'Admin':
-                    return redirect(url_for('administrator'))
-                else:
-                    return redirect(url_for('dashboard'))
-            else:
-                flash('Incorrect password.')
-        else:
-            flash('Invalid email.')
-    
-    return render_template('login.html')
+    except Exception as e:
+        print(f"Error fetching admin dashboard data: {e}")
+        return jsonify({'message': f'Internal server error: {str(e)}'}), 500
 
+#Endpoint to download logs table
+@app.route('/api/admin/logs/download', methods=['GET'])
+@token_required
+@admin_required
+def api_download_logs(user_id, role):
+    try:
+        logs = get_all_logs()
+        output = StringIO()
+        writer = csv.writer(output, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+        writer.writerow(['User ID', 'Role', 'Area', 'Access Time', 'Entry Allowed?', 'Reason'])
+        output.write('\ufeff')
 
-#Registration page
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    errors = {}
-    values = {}
-    available_roles = get_all_roles()
+        for log in logs:
+            writer.writerow([
+                log['user_id'] if log['user_id'] else 'N/A',
+                log['role'] if log['role'] else 'N/A',
+                log['area'] if log['area'] else 'N/A',
+                log['access_time'] if log['access_time'] else 'N/A',
+                log['entry_allowed'] if log['entry_allowed'] is not None else 'N/A',
+                log['reason'] if log['reason'] else 'N/A',
+            ])
 
-    if request.method == 'POST':
-        name = request.form.get('name', '').strip()
-        email = request.form.get('email', '').strip()
-        password = request.form.get('password', '').strip()
-        role = request.form['role']
-        admin_key = request.form.get('admin_key', '')
+        output.seek(0)
         
-        #Save entered values so user doesn't need to retype
-        values = {'name': name, 'email': email, 'role': role, 'admin_key': admin_key}
+        mem = BytesIO()
+        mem.write(output.getvalue().encode('utf-8'))
+        mem.seek(0)
+        output.close()
 
-        #Validate fields
-        if not name:
-            errors['name'] = "Name is required."
-        if not email:
-            errors['email'] = "Email is required."
-        if not password:
-            errors['password'] = "Password is required."
-
-        #Admin key validation
-        if values['role'] == 'Admin':
-            if not values['admin_key']:
-                errors['admin_key'] = "Admin key is required"
-            elif values['admin_key'] != ADMIN_REGISTRATION_KEY:
-                errors['admin_key'] = "Invalid admin registration key. Please contact the administrator."
-
-        if not errors:
-            conn = get_db_connection()
-            cur = conn.cursor()
-            
-            cur.execute('SELECT * FROM users WHERE email = %s', (email,))
-            
-            if cur.fetchone():
-                errors['email'] = "This email is already registered."
-            else:
-                user_id = generate_unique_id()
-                qrimage, last_qr_time = generate_qr(user_id, SIGNATURE_KEY)
-                registered_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                
-                save_user(user_id, name, email, password, role, qrimage, last_qr_time, registered_at)
-                
-                cur.close()
-                conn.close()
-                return redirect(url_for('login'))
-            
-            cur.close()
-            conn.close()
-
-    return render_template('register.html', errors=errors, values=values, available_roles=available_roles)
+        return send_file(
+            mem,
+            mimetype='text/csv; charset=utf-8',
+            as_attachment=True,
+            download_name='logs.csv'
+        )
+    except Exception as e:
+        print(f"Error downloading logs: {e}")
+        return jsonify({'message': f'Internal server error: {str(e)}'}), 500
 
 
-#Dashboard
-@app.route('/dashboard')
-def dashboard():
-    user_id = session.get('user_id')
+#Endpoint to download users table
+@app.route('/api/admin/users/download', methods=['GET'])
+@token_required
+@admin_required
+def api_download_users(user_id, role):
+    try:
+        users = get_all_users()
+        output = StringIO()
+        writer = csv.writer(output, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+        writer.writerow(['ID', 'Name', 'Email', 'Role', 'Registered At'])
+        output.write('\ufeff')
 
-    conn = get_db_connection()
-    cur = conn.cursor()
-    
-    cur.execute('SELECT * FROM users WHERE id = %s', (user_id,))
-    user = cur.fetchone()
+        for user in users:
+            writer.writerow([
+                user['id'],
+                user['name'],
+                user['email'],
+                user['role'],
+                user['registered_at']
+            ])
 
-    if not user:
-        cur.close()
-        conn.close()
-        return redirect(url_for('login'))
+        output.seek(0)
+        
+        mem = BytesIO()
+        mem.write(output.getvalue().encode('utf-8'))
+        mem.seek(0)
+        output.close()
 
-    last_qr_time = int(user['last_qr_time']) if user and user['last_qr_time'] else 0
-
-    #Calculate how many seconds are left before QR expires
-    qr_lifetime = 30  #seconds
-    now = int(time.time())
-    remaining = qr_lifetime - (now - last_qr_time)
-    if remaining < 0:
-        remaining = 0
-
-    #Convert BLOB QR image to base64 string
-    image = Image.open(BytesIO(user['qr_image']))
-    buffer = BytesIO()
-    image.save(buffer, format="PNG")
-    qr_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-
-    #Fetch last successful access
-    cur.execute('''
-        SELECT access_time, area FROM logs 
-        WHERE user_id = %s AND entry_allowed = 1 
-        ORDER BY access_time DESC LIMIT 1
-    ''', (user_id,))
-    last_access = cur.fetchone()
-
-    #Fetch all successful accesses
-    cur.execute('''
-        SELECT access_time, area FROM logs 
-        WHERE user_id = %s AND entry_allowed = 1 
-        ORDER BY access_time DESC
-    ''', (user_id,))
-    history = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    return render_template(
-        'dashboard.html',
-        name=user['name'],
-        email=user['email'],
-        role=user['role'],
-        qr_base64=qr_base64,
-        last_qr_time=last_qr_time,
-        last_access=(f"{last_access['access_time']} / {last_access['area']}" if last_access else None),
-        history=[f"{row['access_time']} / {row['area']}" for row in history] if history else [],
-        remaining=remaining
-    )
-
-    
-@app.route('/refresh_qr')
-def refresh_qr():
-    user_id = session.get('user_id')
-    if not user_id:
-        return {"error": "Unauthorized"}, 401
-
-    conn = get_db_connection()
-    cur = conn.cursor()
-    
-    cur.execute('SELECT * FROM users WHERE id = %s', (user_id,))
-    user = cur.fetchone()
-    
-    if not user:
-        cur.close()
-        conn.close()
-        return {"error": "User not found"}, 404
-
-    #Generate new QR
-    new_qr, timestamp = generate_qr(user_id, SIGNATURE_KEY)
-
-    cur.execute("UPDATE users SET qr_image = %s, last_qr_time = %s WHERE id = %s", 
-               (new_qr, timestamp, user_id))
-    conn.commit()
-    
-    #Return new QR as base64
-    qr_base64 = base64.b64encode(new_qr).decode("utf-8")
-    
-    cur.close()
-    conn.close()
-    
-    return {"qr_base64": qr_base64}
-
-def get_last3_logs():
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM logs ORDER BY access_time DESC LIMIT 3")
-    logs = cur.fetchall()
-    cur.close()
-    conn.close()
-    return logs
-
-def get_all_logs():
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM logs ORDER BY access_time DESC")
-    logs = cur.fetchall()
-    cur.close()
-    conn.close()
-    return logs
-
-def get_last_3_users():
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('SELECT * FROM users ORDER BY registered_at DESC LIMIT 3')
-    users = cur.fetchall()
-    cur.close()
-    conn.close()
-    return users
-
-def get_all_users():
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('SELECT * FROM users ORDER BY registered_at DESC')
-    users = cur.fetchall()
-    cur.close()
-    conn.close()
-    return users
-
-@app.route('/administrator')
-def administrator():
-    user_id = session.get('user_id')
-    if not user_id:
-        return redirect(url_for('login'))
-
-    last_3_logs = get_last3_logs()
-    last_3_users = get_last_3_users()
-
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('SELECT name FROM users WHERE id = %s', (user_id,))
-    user = cur.fetchone()
-    cur.close()
-    conn.close()
-
-    name = user['name'] if user else "Administrator"
-
-    return render_template('administrator.html', name=name, last_3_logs=last_3_logs, last_3_users=last_3_users)
-
-
-@app.route('/download_logs')
-def download_logs():
-    logs = get_all_logs()
-    output = StringIO()
-    writer = csv.writer(output, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-    writer.writerow(['User ID', 'Role', 'Area', 'Access Time', 'Entry Allowed?', 'Reason'])
-    output.write('\ufeff')
-
-    for log in logs:
-        writer.writerow([
-            log['user_id'] if log['user_id'] else 'N/A',
-            log['role'] if log['role'] else 'N/A',
-            log['area'] if log['area'] else 'N/A',
-            log['access_time'] if log['access_time'] else 'N/A',
-            log['entry_allowed'] if log['entry_allowed'] is not None else 'N/A',
-            log['reason'] if log['reason'] else 'N/A',
-        ])
-
-    output.seek(0)
-    return Response(
-        output.getvalue(),
-        mimetype='text/csv; charset=utf-8',
-        headers={'Content-Disposition': 'attachment; filename=logs.csv'}
-    )
-
-
-@app.route('/full_logs')
-def full_logs():
-    logs = get_all_logs()
-    return render_template('full_logs.html', logs=logs)
-
-@app.route('/full_users')
-def full_users():
-    users = get_all_users()
-    return render_template('full_users.html', users=users)
-
-
-@app.route('/download_users')
-def download_users():
-    users = get_all_users()
-
-    output = StringIO()
-    writer = csv.writer(output, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-    writer.writerow(['ID', 'Name', 'Email', 'Role'])
-    output.write('\ufeff')
-
-    for user in users:
-        writer.writerow([
-            user['id'],
-            user['name'],
-            user['email'],
-            user['role'],
-        ])
-
-    output.seek(0)
-    return Response(
-        output.getvalue(),
-        mimetype='text/csv; charset=utf-8',
-        headers={'Content-Disposition': 'attachment; filename=users.csv'}
-    )
-
-
-@app.route('/edit-user-redirect', methods=['POST'])
-def edit_user_redirect():
-    email = request.form.get('edit_email', '').strip()
-    if not email:
-        return render_template('administrator.html',
-                            name=session.get('name', 'Administrator'),
-                            last_3_logs=get_last3_logs(),
-                            last_3_users=get_last_3_users(),
-                            edit_redirect_error="No email provided",
-                            edit_email=email)
-    
-    user = get_user_by_email(email)
-    if not user:
-        return render_template('administrator.html',
-                            name=session.get('name', 'Administrator'),
-                            last_3_logs=get_last3_logs(),
-                            last_3_users=get_last_3_users(),
-                            edit_redirect_error="User not found",
-                            edit_email=email)
-
-    session['edit_user_email'] = email
-    return redirect(url_for('edit_user_form'))
-
-
-@app.route('/edit-user', methods=['GET', 'POST'])
-def edit_user_form():
-    email = session.get('edit_user_email')
-    if not email:
-        return redirect(url_for('administrator'))
-    
-    user = get_user_by_email(email)
-    if not user:
-        return redirect(url_for('administrator'))
-
-    message = None
-    if request.method == 'POST':
-        if request.form.get('action') == 'apply':
-            new_name = request.form.get('name', '').strip()
-            new_email = request.form.get('email', '').strip()
-            new_role = request.form.get('role', '').strip()
-            
-            if not all([new_name, new_email, new_role]):
-                message = ("error", "All fields are required")
-            else:
-                try:
-                    update_user(email, new_name, new_email, new_role)
-                    session['edit_user_email'] = new_email
-                    message = ("success", "User updated successfully")
-                except Exception as e:
-                    message = ("error", f"Error updating user: {str(e)}")
-    
-    user = get_user_by_email(session.get('edit_user_email'))
-    if not user:
-        return redirect(url_for('administrator'))
-    
-    return render_template("edit_user.html", 
-                         user=user,
-                         message=message)
-
-
-
-@app.route('/delete-user', methods=['POST'])
-def delete_user():
-    email = request.form.get('delete_email', '').strip()
-    error = None
-    
-    if not email:
-        error = "No email provided"
-    else:
-        user = get_user_by_email(email)
-        if not user:
-            error = "User not found"
-        else:
-            delete_user_by_email(email)
-            error = "User deleted successfully"
-    
-    #Pass the error to administrator template
-    last_3_logs = get_last3_logs()
-    last_3_users = get_last_3_users()
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('SELECT name FROM users WHERE id = %s', (session.get('user_id'),))
-    user = cur.fetchone()
-    cur.close()
-    conn.close()
-    
-    return render_template('administrator.html', 
-                         name=user['name'] if user else "Administrator",
-                         last_3_logs=last_3_logs,
-                         last_3_users=last_3_users,
-                         delete_error=error,
-                         delete_email=email)
-
-
-#Logout
-@app.route('/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('login'))
-
+        return send_file(
+            mem,
+            mimetype='text/csv; charset=utf-8',
+            as_attachment=True,
+            download_name='users.csv'
+        )
+    except Exception as e:
+        print(f"Error downloading users: {e}")
+        return jsonify({'message': f'Internal server error: {str(e)}'}), 500
 
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
+
+
+
+# @app.route('/administrator')
+# def administrator():
+#     user_id = session.get('user_id')
+#     if not user_id:
+#         return redirect(url_for('login'))
+
+#     last_3_logs = get_last3_logs()
+#     last_3_users = get_last_3_users()
+
+#     conn = get_db_connection()
+#     cur = conn.cursor()
+#     cur.execute('SELECT name FROM users WHERE id = %s', (user_id,))
+#     user = cur.fetchone()
+#     cur.close()
+#     conn.close()
+
+#     name = user['name'] if user else "Administrator"
+
+#     return render_template('administrator.html', name=name, last_3_logs=last_3_logs, last_3_users=last_3_users)
+
+
+# @app.route('/download_logs')
+# def download_logs():
+#     logs = get_all_logs()
+#     output = StringIO()
+#     writer = csv.writer(output, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+#     writer.writerow(['User ID', 'Role', 'Area', 'Access Time', 'Entry Allowed?', 'Reason'])
+#     output.write('\ufeff')
+
+#     for log in logs:
+#         writer.writerow([
+#             log['user_id'] if log['user_id'] else 'N/A',
+#             log['role'] if log['role'] else 'N/A',
+#             log['area'] if log['area'] else 'N/A',
+#             log['access_time'] if log['access_time'] else 'N/A',
+#             log['entry_allowed'] if log['entry_allowed'] is not None else 'N/A',
+#             log['reason'] if log['reason'] else 'N/A',
+#         ])
+
+#     output.seek(0)
+#     return Response(
+#         output.getvalue(),
+#         mimetype='text/csv; charset=utf-8',
+#         headers={'Content-Disposition': 'attachment; filename=logs.csv'}
+#     )
+
+
+# @app.route('/full_logs')
+# def full_logs():
+#     logs = get_all_logs()
+#     return render_template('full_logs.html', logs=logs)
+
+# @app.route('/full_users')
+# def full_users():
+#     users = get_all_users()
+#     return render_template('full_users.html', users=users)
+
+
+# @app.route('/download_users')
+# def download_users():
+#     users = get_all_users()
+
+#     output = StringIO()
+#     writer = csv.writer(output, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+#     writer.writerow(['ID', 'Name', 'Email', 'Role'])
+#     output.write('\ufeff')
+
+#     for user in users:
+#         writer.writerow([
+#             user['id'],
+#             user['name'],
+#             user['email'],
+#             user['role'],
+#         ])
+
+#     output.seek(0)
+#     return Response(
+#         output.getvalue(),
+#         mimetype='text/csv; charset=utf-8',
+#         headers={'Content-Disposition': 'attachment; filename=users.csv'}
+#     )
+
+
+# @app.route('/edit-user-redirect', methods=['POST'])
+# def edit_user_redirect():
+#     email = request.form.get('edit_email', '').strip()
+#     if not email:
+#         return render_template('administrator.html',
+#                             name=session.get('name', 'Administrator'),
+#                             last_3_logs=get_last3_logs(),
+#                             last_3_users=get_last_3_users(),
+#                             edit_redirect_error="No email provided",
+#                             edit_email=email)
+    
+#     user = get_user_by_email(email)
+#     if not user:
+#         return render_template('administrator.html',
+#                             name=session.get('name', 'Administrator'),
+#                             last_3_logs=get_last3_logs(),
+#                             last_3_users=get_last_3_users(),
+#                             edit_redirect_error="User not found",
+#                             edit_email=email)
+
+#     session['edit_user_email'] = email
+#     return redirect(url_for('edit_user_form'))
+
+
+# @app.route('/edit-user', methods=['GET', 'POST'])
+# def edit_user_form():
+#     email = session.get('edit_user_email')
+#     if not email:
+#         return redirect(url_for('administrator'))
+    
+#     user = get_user_by_email(email)
+#     if not user:
+#         return redirect(url_for('administrator'))
+
+#     message = None
+#     if request.method == 'POST':
+#         if request.form.get('action') == 'apply':
+#             new_name = request.form.get('name', '').strip()
+#             new_email = request.form.get('email', '').strip()
+#             new_role = request.form.get('role', '').strip()
+            
+#             if not all([new_name, new_email, new_role]):
+#                 message = ("error", "All fields are required")
+#             else:
+#                 try:
+#                     update_user(email, new_name, new_email, new_role)
+#                     session['edit_user_email'] = new_email
+#                     message = ("success", "User updated successfully")
+#                 except Exception as e:
+#                     message = ("error", f"Error updating user: {str(e)}")
+    
+#     user = get_user_by_email(session.get('edit_user_email'))
+#     if not user:
+#         return redirect(url_for('administrator'))
+    
+#     return render_template("edit_user.html", 
+#                          user=user,
+#                          message=message)
+
+
+
+# @app.route('/delete-user', methods=['POST'])
+# def delete_user():
+#     email = request.form.get('delete_email', '').strip()
+#     error = None
+    
+#     if not email:
+#         error = "No email provided"
+#     else:
+#         user = get_user_by_email(email)
+#         if not user:
+#             error = "User not found"
+#         else:
+#             delete_user_by_email(email)
+#             error = "User deleted successfully"
+    
+#     #Pass the error to administrator template
+#     last_3_logs = get_last3_logs()
+#     last_3_users = get_last_3_users()
+#     conn = get_db_connection()
+#     cur = conn.cursor()
+#     cur.execute('SELECT name FROM users WHERE id = %s', (session.get('user_id'),))
+#     user = cur.fetchone()
+#     cur.close()
+#     conn.close()
+    
+#     return render_template('administrator.html', 
+#                          name=user['name'] if user else "Administrator",
+#                          last_3_logs=last_3_logs,
+#                          last_3_users=last_3_users,
+#                          delete_error=error,
+#                          delete_email=email)
+
+
+# #Logout
+# @app.route('/logout')
+# def logout():
+#     session.clear()
+#     return redirect(url_for('login'))
