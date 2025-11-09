@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, forwardRef, Ref } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronDown, Eye, EyeOff, Loader2, CheckCircle2, XCircle } from "lucide-react";
 
@@ -18,15 +18,15 @@ interface InputProps {
   hasError?: boolean;
 }
 
-function Input({ value, onChange, onBlur, placeholder, type = "text", hasError = false }: InputProps) {
+const Input = forwardRef(({ value, onChange, onBlur, placeholder, type = "text", hasError = false }: InputProps, ref: Ref<HTMLInputElement>) => {
   const errorClasses = hasError ? "border-red-500" : "border-[#e0e0e0]";
   return (
-    <div className="relative bg-white box-border flex items-center h-[45px] rounded-[8px] w-full">
+    <div className="relative bg-white box-border flex items-center h-[50px] rounded-[8px] w-full">
       <div aria-hidden="true" className={`absolute border ${errorClasses} border-solid inset-0 pointer-events-none rounded-[8px] transition-colors`} />
-      <input type={type} value={value} onChange={(e) => onChange(e.target.value)} onBlur={onBlur} placeholder={placeholder} className="w-full h-full bg-transparent border-none outline-none font-sans px-4 text-base md:text-lg text-black placeholder:text-[#828282] focus:placeholder-transparent transition-colors duration-300" />
+      <input ref={ref} type={type} value={value} onChange={(e) => onChange(e.target.value)} onBlur={onBlur} placeholder={placeholder} className="w-full h-full bg-transparent border-none outline-none font-sans px-4 text-base md:text-lg text-black placeholder:text-[#828282] focus:placeholder-transparent transition-colors duration-300" />
     </div>
   );
-}
+});
 
 //Password specific input component with visibility toggle
 interface PasswordInputProps {
@@ -38,15 +38,16 @@ interface PasswordInputProps {
     hasError?: boolean;
 }
 
-function PasswordInput({ value, onChange, onFocus, onBlur, placeholder, hasError = false }: PasswordInputProps) {
+const PasswordInput = forwardRef(({ value, onChange, onFocus, onBlur, placeholder, hasError = false }: PasswordInputProps, ref: Ref<HTMLInputElement>) => {
     const [showPassword, setShowPassword] = useState(false);
     const toggleVisibility = () => { setShowPassword(!showPassword); };
     const errorClasses = hasError ? "border-red-500" : "border-[#e0e0e0]";
 
     return (
-        <div className="relative bg-white box-border flex items-center h-[45px] rounded-[8px] w-full">
+        <div className="relative bg-white box-border flex items-center h-[50px] rounded-[8px] w-full">
             <div aria-hidden="true" className={`absolute border ${errorClasses} border-solid inset-0 pointer-events-none rounded-[8px] transition-colors`} />
             <input
+                ref={ref}
                 type={showPassword ? "text" : "password"}
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
@@ -60,7 +61,7 @@ function PasswordInput({ value, onChange, onFocus, onBlur, placeholder, hasError
             </button>
         </div>
     );
-}
+});
 
 //Dropdown component for selecting user role
 interface RoleDropdownProps {
@@ -71,15 +72,16 @@ interface RoleDropdownProps {
     hasError?: boolean;
 }
 
-function RoleDropdown({ value, onChange, onBlur, options, hasError = false }: RoleDropdownProps) {
+const RoleDropdown = forwardRef(({ value, onChange, onBlur, options, hasError = false }: RoleDropdownProps, ref: Ref<HTMLSelectElement>) => {
     const textColorClass = value ? 'text-black' : 'text-[#828282]';
     const errorClasses = hasError ? "border-red-500" : "border-[#e0e0e0]";
 
     return (
-        <div className="relative bg-white box-border flex items-center h-[45px] rounded-[8px] w-full">
+        <div className="relative bg-white box-border flex items-center h-[50px] rounded-[8px] w-full">
             <div aria-hidden="true" className={`absolute border ${errorClasses} border-solid inset-0 pointer-events-none rounded-[8px] transition-colors`} />
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500 pointer-events-none" />
             <select
+                ref={ref}
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
                 onBlur={onBlur}
@@ -97,7 +99,7 @@ function RoleDropdown({ value, onChange, onBlur, options, hasError = false }: Ro
             </select>
         </div>
     );
-}
+});
 
 //Reusable button component with loading state and 2 variants
 interface ActionButtonProps {
@@ -178,6 +180,12 @@ export default function FrameRegister() {
     const [roleOptions, setRoleOptions] = useState<{ value: string; label: string }[]>([]);
     const [isPasswordFocused, setIsPasswordFocused] = useState(false);
     const navigate = useNavigate();
+
+    const nameRef = useRef<HTMLInputElement>(null);
+    const emailRef = useRef<HTMLInputElement>(null);
+    const passwordRef = useRef<HTMLInputElement>(null);
+    const roleRef = useRef<HTMLSelectElement>(null);
+    const adminKeyRef = useRef<HTMLInputElement>(null);
 
     //Fetch roles from backend on component mount
     useEffect(() => {
@@ -292,12 +300,36 @@ export default function FrameRegister() {
 
 
     //Enter key works as submit
-    const handleKeyPress = (event: React.KeyboardEvent) => {
+    const handleKeyDown = (event: React.KeyboardEvent) => {
         if (event.key === 'Enter' && !isLoading) handleRegister();
+
+        //Arrow key navigation between inputs
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault(); //Prevent default scrolling behavior
+
+            //Dynamic input list based on role being admin or not
+            const inputs = [nameRef, emailRef, passwordRef, roleRef];
+            if (role === 'Admin') {
+                inputs.push(adminKeyRef);
+            }
+
+            //Find current focused element index
+            const currentIndex = inputs.findIndex(ref => ref.current === document.activeElement);
+
+            let nextIndex;
+            if (event.key === 'ArrowDown') {
+                nextIndex = (currentIndex + 1) % inputs.length;
+            } else { //ArrowUp
+                nextIndex = (currentIndex - 1 + inputs.length) % inputs.length;
+            }
+
+            //Focus the next element
+            inputs[nextIndex].current?.focus();
+        }
     };
 
     return (
-        <div className="w-11/12 max-w-xs md:max-w-md lg:max-w-lg xl:max-w-xl flex flex-col items-center gap-4 p-4" onKeyDown={handleKeyPress}>
+        <div className="w-11/12 max-w-xs md:max-w-md lg:max-w-lg xl:max-w-xl flex flex-col items-center gap-4 p-4" onKeyDown={handleKeyDown}>
             {/* TITLES */}
             <div className="text-center mb-4 md:mb-6">
                 <p className="font-semibold text-3xl md:text-4xl xl:text-5xl text-black">Register</p>
@@ -314,15 +346,16 @@ export default function FrameRegister() {
             {/* FORM */}
             <div className="w-full flex flex-col gap-1">
                 <div className="flex flex-col mb-2">
-                    <Input value={name} onChange={setName} onBlur={() => handleBlur('name')} placeholder="Name" type="name" hasError={!!errors.name} />
+                    <Input ref={nameRef} value={name} onChange={setName} onBlur={() => handleBlur('name')} placeholder="Name" type="name" hasError={!!errors.name} />
                     {errors.name && <p className="text-red-500 text-xs mt-1 ml-1">{errors.name}</p>}
                 </div>
                 <div className="flex flex-col mb-2">
-                    <Input value={email} onChange={setEmail} onBlur={() => handleBlur('email')} placeholder="email@domain.com" type="email" hasError={!!errors.email} />
+                    <Input ref={emailRef} value={email} onChange={setEmail} onBlur={() => handleBlur('email')} placeholder="email@domain.com" type="email" hasError={!!errors.email} />
                     {errors.email && <p className="text-red-500 text-xs mt-1 ml-1">{errors.email}</p>}
                 </div>
                 <div className="flex flex-col mb-2">
                     <PasswordInput 
+                        ref={passwordRef}
                         value={password} 
                         onChange={setPassword} 
                         onFocus={() => setIsPasswordFocused(true)} 
@@ -334,12 +367,13 @@ export default function FrameRegister() {
                     {isPasswordFocused && <PasswordRequirements password={password} />}
                 </div>
                 <div className="flex flex-col">
-                    <RoleDropdown value={role} onChange={setRole} options={roleOptions} hasError={!!errors.role} onBlur={() => handleBlur('role')} />
+                    <RoleDropdown ref={roleRef} value={role} onChange={setRole} options={roleOptions} hasError={!!errors.role} onBlur={() => handleBlur('role')} />
                     {errors.role && <p className="text-red-500 text-xs mt-1 ml-1">{errors.role}</p>}
                 </div>
                 {role === 'Admin' && (
                     <div className="flex flex-col mt-2 transition-all duration-300">
                         <PasswordInput 
+                            ref={adminKeyRef}
                             value={adminKey} 
                             onChange={setAdminKey} 
                             onFocus={() => {}}

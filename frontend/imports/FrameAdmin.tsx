@@ -1,14 +1,16 @@
 import { useNavigate } from "react-router-dom";
+import { useCallback } from "react";
 
 export default function FrameAdmin() {
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    // Esborrem el token guardat per tancar la sessió
+  //Logout handler
+  const handleLogout = useCallback(() => {
+    //Remove the authentication token
     localStorage.removeItem("token");
-    // Redirigim a la pàgina de login
+    //Navigate to login
     navigate("/login");
-  };
+  }, [navigate]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">

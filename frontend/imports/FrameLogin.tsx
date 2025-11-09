@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, forwardRef, Ref } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 
@@ -18,12 +18,13 @@ interface InputProps {
   hasError?: boolean; //To apply red border on error
 }
 
-function Input({ value, onChange, onBlur, placeholder, type = "text", hasError = false }: InputProps) {
+const Input = forwardRef(({ value, onChange, onBlur, placeholder, type = "text", hasError = false }: InputProps, ref: Ref<HTMLInputElement>) => {
   const errorClasses = hasError ? "border-red-500" : "border-[#e0e0e0]";
   return (
-    <div className="relative bg-white box-border flex items-center h-[45px] rounded-[8px] w-full">
+    <div className="relative bg-white box-border flex items-center h-[50px] rounded-[8px] w-full">
       <div aria-hidden="true" className={`absolute border ${errorClasses} border-solid inset-0 pointer-events-none rounded-[8px] transition-colors`} />
       <input
+        ref={ref}
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -33,7 +34,7 @@ function Input({ value, onChange, onBlur, placeholder, type = "text", hasError =
       />
     </div>
   );
-}
+});
 
 // Password specific input component with visibility toggle
 interface PasswordInputProps {
@@ -44,15 +45,16 @@ interface PasswordInputProps {
     hasError?: boolean;
 }
 
-function PasswordInput({ value, onChange, onBlur, placeholder, hasError = false }: PasswordInputProps) {
+const PasswordInput = forwardRef(({ value, onChange, onBlur, placeholder, hasError = false }: PasswordInputProps, ref: Ref<HTMLInputElement>) => {
     const [showPassword, setShowPassword] = useState(false);
     const toggleVisibility = () => { setShowPassword(!showPassword); };
     const errorClasses = hasError ? "border-red-500" : "border-[#e0e0e0]";
 
     return (
-        <div className="relative bg-white box-border flex items-center h-[45px] rounded-[8px] w-full">
+        <div className="relative bg-white box-border flex items-center h-[50px] rounded-[8px] w-full">
             <div aria-hidden="true" className={`absolute border ${errorClasses} border-solid inset-0 pointer-events-none rounded-[8px] transition-colors`} />
             <input
+                ref={ref}
                 type={showPassword ? "text" : "password"}
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
@@ -70,7 +72,7 @@ function PasswordInput({ value, onChange, onBlur, placeholder, hasError = false 
             </button>
         </div>
     );
-}
+});
 
 //Reusable button component with loading state and 2 variants
 interface ActionButtonProps {
@@ -124,6 +126,10 @@ export default function FrameLogin() {
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+
+  const emailRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const inputs = [emailRef, passwordRef];
 
   const validate = () => {
     const newErrors: { email?: string; password?: string } = {};
@@ -197,14 +203,29 @@ export default function FrameLogin() {
   const navigateToRegister = () => navigate('/register');
 
   //Enter key works as submit
-  const handleKeyPress = (event: React.KeyboardEvent) => {
+  const handleKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === 'Enter' && !isLoading) {
       handleContinue();
+    }
+
+    //Arrow key navigation between inputs
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault(); //Prevent default scrolling behavior
+        const currentIndex = inputs.findIndex(ref => ref.current === document.activeElement);
+
+        let nextIndex;
+        if (event.key === 'ArrowDown') {
+            nextIndex = (currentIndex + 1) % inputs.length;
+        } else { //ArrowUp
+            nextIndex = (currentIndex - 1 + inputs.length) % inputs.length;
+        }
+
+        inputs[nextIndex].current?.focus();
     }
   };
 
   return (
-    <div className="w-11/12 max-w-xs md:max-w-md lg:max-w-lg xl:max-w-xl flex flex-col items-center gap-4 p-4" onKeyDown={handleKeyPress}>
+    <div className="w-11/12 max-w-xs md:max-w-md lg:max-w-lg xl:max-w-xl flex flex-col items-center gap-4 p-4" onKeyDown={handleKeyDown}>
       {/* TITLES */}
       <div className="text-center mb-4 md:mb-6">
         <p className="font-semibold text-3xl md:text-4xl xl:text-5xl text-black">
@@ -231,6 +252,7 @@ export default function FrameLogin() {
       <div className="w-full flex flex-col gap-1">
         <div className="flex flex-col mb-2">
             <Input 
+                ref={emailRef}
                 value={email} 
                 onChange={setEmail} 
                 onBlur={() => handleBlur('email')}
@@ -242,6 +264,7 @@ export default function FrameLogin() {
         </div>
         <div className="flex flex-col">
             <PasswordInput 
+                ref={passwordRef}
                 value={password} 
                 onChange={setPassword} 
                 onBlur={() => handleBlur('password')}
