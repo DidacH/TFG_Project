@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+// # CHANGE: Removed 'Download' icon as requested
 import { Loader2, UserCircle, Users, FileText, LogOut, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { cn } from "../components/ui/utils";
 
@@ -59,7 +60,8 @@ function ActionButton({ onClick, children, variant = 'primary', isLoading = fals
 
 //Component for Section Titles
 function SectionTitle({ children }: { children: React.ReactNode }) {
-    return <h2 className="text-2xl md:text-3xl font-semibold text-black text-center lg:text-left">{children}</h2>;
+    //Aligned text left for desktop layout
+    return <h2 className="text-2xl md:text-3xl font-semibold text-black text-left">{children}</h2>;
 }
 
 //Admin Frame Component
@@ -68,6 +70,8 @@ export default function FrameAdmin() {
   const [data, setData] = useState<AdminData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // # CHANGE: Removed 'downloading' state as requested
+  // const [downloading, setDownloading] = useState<'users' | 'logs' | null>(null);
 
   //Get token from localStorage
   const getToken = () => localStorage.getItem('token');
@@ -141,11 +145,13 @@ export default function FrameAdmin() {
   //Admin panel Render
   return (
         <div className="flex flex-col min-h-screen bg-background">
-
             {/* Header Section */}
-            <div className="fixed top-0 left-0 right-0 z-40 bg-gray-50 pt-6 md:pt-8 shadow-sm">
-                <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="fixed top-0 left-0 right-0 z-40 bg-background pt-6 md:pt-8">
+                {/*Container for alignment & max-width */}
+                <div className="w-full mx-auto px-4 sm:px-6 lg:px-10">
+                    {/* Inner container for Title and Button alignment */}
                     <div className="relative flex justify-center items-center h-12 md:h-14 mb-3">
+                        {/*Profile Button - Positioned left within the padded container */}
                         <button
                             onClick={() => navigate('/profile')}
                             aria-label="User Profile"
@@ -158,97 +164,102 @@ export default function FrameAdmin() {
                             Admin Panel
                         </h1>
                     </div>
-                    {/* Separator */}
+                     {/* Separator */}
                      <div className="border-b border-[#e6e6e6]"></div>
                 </div>
             </div>
 
             {/* Main Content Area */}
-            <div className="flex-grow w-full pt-28 md:pt-32 pb-12">
+            {/* # CHANGE: Added max-w-7xl and responsive padding/gaps */}
+            <div className="flex-grow w-full flex flex-col items-center gap-10 px-4 pb-12 pt-8 md:pt-12">
+                
+                {/* # CHANGE: This container centers all content and provides max width */}
                 <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    
-                    {/* Title */}
-                    <div className="w-full text-center lg:text-left mb-10">
+
+                    {/* Welcome Title */}
+                    <div className="w-full mb-10">
                         <SectionTitle>Welcome, <span className="text-[#c8102e]">{data.admin_name}</span>!</SectionTitle>
                     </div>
 
-                    {/* Grid container (2 columns) */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 lg:gap-8">
-
-                        <div className="lg:col-span-2 flex flex-col gap-10">
-                            {/* Recent Activity Section */}
-                            <div className="flex flex-col gap-3">
-                                <h3 className="text-xl md:text-2xl font-semibold text-gray-800">Recent Access Logs</h3>
-                                {data.last_3_logs.length > 0 ? (
-                                    <div className="flex flex-col gap-3">
-                                        {data.last_3_logs.map((log, index) => (
-                                            <div key={`log-${index}`} className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm flex justify-between items-center">
-                                                <div className="flex-1">
-                                                    <p className="font-medium text-gray-800">User: {log.user_id}</p>
-                                                    <p className="text-gray-600">Area: {log.area}</p>
-                                                    <p className="text-gray-500 text-xs">{log.access_time}</p>
-                                                </div>
-                                                {log.entry_allowed ? (
-                                                    <CheckCircle2 className="h-6 w-6 text-green-600 flex-shrink-0" />
-                                                ) : (
-                                                    <AlertTriangle className="h-6 w-6 text-red-600 flex-shrink-0" />
-                                                )}
+                    {/* # CHANGE: Row 1 - Recent Activity */}
+                    <div className="w-full grid grid-cols-1 lg:grid-cols-2 lg:gap-8">
+                        {/* Recent Activity Column */}
+                        <div className="flex flex-col gap-3">
+                            <h3 className="text-xl md:text-2xl font-semibold text-gray-800">Recent Access Logs</h3>
+                            {data.last_3_logs.length > 0 ? (
+                                <div className="flex flex-col gap-3">
+                                    {data.last_3_logs.map((log, index) => (
+                                        <div key={`log-${index}`} className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm flex justify-between items-center">
+                                            <div className="flex-1 overflow-hidden">
+                                                {/* # CHANGE: Added truncate for very long user_ids */}
+                                                <p className="font-medium text-gray-800 truncate">User: {log.user_id}</p>
+                                                <p className="text-gray-600">Area: {log.area}</p>
+                                                <p className="text-gray-500 text-xs">{log.access_time}</p>
                                             </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <p className="text-center lg:text-left text-gray-500">No recent logs.</p>
-                                )}
-                            </div>
-
-                            {/* Recent Users Section */}
-                            <div className="flex flex-col gap-3">
-                                <h3 className="text-xl md:text-2xl font-semibold text-gray-800">Recent Registered Users</h3>
-                                {data.last_3_users.length > 0 ? (
-                                    <div className="flex flex-col gap-3">
-                                        {data.last_3_users.map((user, index) => (
-                                            <div key={`user-${index}`} className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm">
-                                                <p className="font-medium text-gray-800">{user.name} ({user.role})</p>
-                                                <p className="text-gray-600">{user.email}</p>
-                                                <p className="text-gray-500 text-xs">Registered: {user.registered_at}</p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <p className="text-center lg:text-left text-gray-500">No recent users.</p>
-                                )}
-                            </div>
+                                            {log.entry_allowed ? (
+                                                <CheckCircle2 className="h-6 w-6 text-green-600 flex-shrink-0 ml-2" />
+                                            ) : (
+                                                <AlertTriangle className="h-6 w-6 text-red-600 flex-shrink-0 ml-2" />
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-left text-gray-500">No recent logs.</p>
+                            )}
                         </div>
 
-                        <div className="lg:col-span-1 flex flex-col gap-10 mt-10 lg:mt-0">
-                            {/* Actions Section */}
-                            <div className="w-full flex flex-col gap-4">
-                                <h3 className="text-xl md:text-2xl font-semibold text-gray-800">Management</h3>
-                                <ActionButton 
-                                    onClick={() => navigate('/admin/users')} 
-                                    variant="secondary" 
-                                    icon={Users}
-                                >
-                                    Manage Users
-                                </ActionButton>
-                                <ActionButton 
-                                    onClick={() => navigate('/admin/logs')} 
-                                    variant="secondary" 
-                                    icon={FileText}
-                                >
-                                    View Logs
-                                </ActionButton>
-                            </div>
-
-                            {/* Logout Button */}
-                            <div className="w-full mt-6">
-                            <ActionButton onClick={handleLogout} variant="primary" icon={LogOut}>
-                                Log Out
-                            </ActionButton>
-                            </div>
+                        {/* Recent Users Column */}
+                        <div className="flex flex-col gap-3 mt-10 lg:mt-0">
+                            <h3 className="text-xl md:text-2xl font-semibold text-gray-800">Recent Registered Users</h3>
+                            {data.last_3_users.length > 0 ? (
+                                <div className="flex flex-col gap-3">
+                                    {data.last_3_users.map((user, index) => (
+                                        <div key={`user-${index}`} className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm">
+                                            <p className="font-medium text-gray-800">{user.name} ({user.role})</p>
+                                            <p className="text-gray-600 truncate">{user.email}</p>
+                                            <p className="text-gray-500 text-xs">Registered: {user.registered_at}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-left text-gray-500">No recent users.</p>
+                            )}
                         </div>
-
                     </div>
+
+                    {/* # CHANGE: Row 2 - Actions */}
+                    <div className="w-full mt-12">
+                        <h3 className="text-xl md:text-2xl font-semibold text-gray-800 mb-4">Management</h3>
+                        {/* # CHANGE: Grid for action buttons */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <ActionButton 
+                                onClick={() => navigate('/admin/users')} 
+                                variant="secondary" 
+                                icon={Users}
+                            >
+                                Manage Users
+                            </ActionButton>
+                            <ActionButton 
+                                onClick={() => navigate('/admin/logs')} 
+                                variant="secondary" 
+                                icon={FileText}
+                            >
+                                View Logs
+                            </ActionButton>
+                        </div>
+                    </div>
+                    
+                    {/* # CHANGE: Removed Downloads Section */}
+
+                    {/* Logout Button */}
+                    {/* # CHANGE: Centered the logout button container */}
+                    <div className="w-full max-w-xs md:max-w-sm mt-12 mx-auto">
+                      <ActionButton onClick={handleLogout} variant="primary" icon={LogOut}>
+                        Log Out
+                      </ActionButton>
+                    </div>
+
                 </div>
             </div> {/* End Main Content Area */}
         </div> //End Main container
