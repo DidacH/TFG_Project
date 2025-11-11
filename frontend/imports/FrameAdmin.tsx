@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-// # CHANGE: Removed 'Download' icon as requested
 import { Loader2, UserCircle, Users, FileText, LogOut, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { cn } from "../components/ui/utils";
 
@@ -170,10 +169,9 @@ export default function FrameAdmin() {
             </div>
 
             {/* Main Content Area */}
-            {/* # CHANGE: Added max-w-7xl and responsive padding/gaps */}
             <div className="flex-grow w-full flex flex-col items-center gap-10 px-4 pb-12 pt-8 md:pt-12">
                 
-                {/* # CHANGE: This container centers all content and provides max width */}
+                {/*This container centers all content and provides max width */}
                 <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
                     {/* Welcome Title */}
@@ -181,7 +179,7 @@ export default function FrameAdmin() {
                         <SectionTitle>Welcome, <span className="text-[#c8102e]">{data.admin_name}</span>!</SectionTitle>
                     </div>
 
-                    {/* # CHANGE: Row 1 - Recent Activity */}
+                    {/*Row 1 - Recent Activity */}
                     <div className="w-full grid grid-cols-1 lg:grid-cols-2 lg:gap-8">
                         {/* Recent Activity Column */}
                         <div className="flex flex-col gap-3">
@@ -250,10 +248,10 @@ export default function FrameAdmin() {
                         </div>
                     </div>
                     
-                    {/* # CHANGE: Removed Downloads Section */}
+                    {/* Removed Downloads Section */}
 
                     {/* Logout Button */}
-                    {/* # CHANGE: Centered the logout button container */}
+                    {/* Centered the logout button container */}
                     <div className="w-full max-w-xs md:max-w-sm mt-12 mx-auto">
                       <ActionButton onClick={handleLogout} variant="primary" icon={LogOut}>
                         Log Out
