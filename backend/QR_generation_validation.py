@@ -34,7 +34,6 @@ def verify_qr(content, secret_key):
             'valid': False,
             'reason': 'malformed',
             'user_id': None,
-            'email': None,
             'role': None,
             'access_time': datetime.fromtimestamp(now).strftime('%Y-%m-%d %H:%M:%S')
         }
@@ -46,7 +45,6 @@ def verify_qr(content, secret_key):
             'valid': False,
             'reason': 'forged',
             'user_id': user_id,
-            'email': None,
             'role': None,
             'access_time': datetime.fromtimestamp(now).strftime('%Y-%m-%d %H:%M:%S')
         }
@@ -54,7 +52,7 @@ def verify_qr(content, secret_key):
     #Fetch user info if signature valid
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT email, role FROM users WHERE id = %s", (user_id,))
+    cur.execute("SELECT role FROM users WHERE id = %s", (user_id,))
     user = cur.fetchone()
     cur.close()
     conn.close()
@@ -62,14 +60,13 @@ def verify_qr(content, secret_key):
     if user is None:
         return {
             'valid': False,
-            'reason': 'not_registered',
+            'reason': 'not registered',
             'user_id': user_id,
-            'email': None,
             'role': None,
             'access_time': datetime.fromtimestamp(now).strftime('%Y-%m-%d %H:%M:%S')
         }
 
-    email, role = user
+    role = user[0]
 
     grace_period = 5  #seconds, for clock skew
     if now - timestamp > expiration_seconds+grace_period:
@@ -77,7 +74,6 @@ def verify_qr(content, secret_key):
             'valid': False,
             'reason': 'expired',
             'user_id': user_id,
-            'email': email,
             'role': role,
             'access_time': datetime.fromtimestamp(now).strftime('%Y-%m-%d %H:%M:%S')
         }
@@ -86,7 +82,6 @@ def verify_qr(content, secret_key):
         'valid': True,
         'reason': 'valid',
         'user_id': user_id,
-        'email': email,
         'role': role,
         'access_time': datetime.fromtimestamp(now).strftime('%Y-%m-%d %H:%M:%S')
     }

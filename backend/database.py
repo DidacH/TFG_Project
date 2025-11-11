@@ -58,13 +58,12 @@ def init_logs_table():
     cur.execute('''
         CREATE TABLE IF NOT EXISTS logs (
             id SERIAL PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            role TEXT NOT NULL,
+            user_id TEXT,
+            role TEXT,
             area TEXT NOT NULL,
             access_time TEXT NOT NULL,
             entry_allowed INTEGER NOT NULL,
-            reason TEXT NOT NULL,
-            FOREIGN KEY (user_id) REFERENCES users(id)
+            reason TEXT NOT NULL
         )
     ''')
     conn.commit()
@@ -186,17 +185,38 @@ def get_all_table_names():
     print(table_names)
 
 
+def select_logs():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM logs')
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return rows
+
+def select_users():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM users')
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return rows
+
+
 if __name__ == "__main__":
 
-    
-    #Tables creation
-    init_roles_table()
-    init_db()
-    init_logs_table()
-    print("Database initialized.")
 
     #Tables deletion
     # delete_tables()
     # print("Database tables deleted.")
+    
+    #Tables creation
+    # init_roles_table()
+    # init_db()
+    # init_logs_table()
+    # print("Database initialized.")
+
+    # print(select_logs())
 
     get_all_table_names()

@@ -7,11 +7,11 @@ import { cn } from "../components/ui/utils";
 const API_URL = import.meta.env.VITE_API_URL || '';
 
 interface LogEntry {
-  user_id: string;
   role: string;
   access_time: string;
   entry_allowed: boolean;
   area: string;
+  reason: string;
 }
 interface UserEntry {
   name: string;
@@ -191,9 +191,9 @@ export default function FrameAdmin() {
                                     {data.last_3_logs.map((log, index) => (
                                         <div key={`log-${index}`} className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm flex justify-between items-center">
                                             <div className="flex-1 overflow-hidden">
-                                                {/* # CHANGE: Added truncate for very long user_ids */}
-                                                <p className="font-medium text-gray-800 truncate">User: {log.user_id}</p>
-                                                <p className="text-gray-600">Area: {log.area}</p>
+                                                <p className="font-medium text-gray-800 truncate">Area: {log.area}</p>
+                                                <p className="text-gray-600">Role: {log.role}</p>
+                                                <p className="text-gray-600">Reason: {log.reason}</p>
                                                 <p className="text-gray-500 text-xs">{log.access_time}</p>
                                             </div>
                                             {log.entry_allowed ? (

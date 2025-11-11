@@ -91,12 +91,12 @@ def admin_required(f):
 # === DATA FETCHING FUNCTIONS ===
 #=================================================
 
-def get_last3_logs():
+def get_last_3_logs():
     conn = get_db_connection()
     cur = conn.cursor()
     # SOLUCIÓ: Seleccionem els camps de 'logs', incloent user_id
     cur.execute("""
-        SELECT user_id, role, access_time, entry_allowed, area
+        SELECT user_id, role, access_time, entry_allowed, area, reason
         FROM logs
         ORDER BY access_time DESC
         LIMIT 3
@@ -373,7 +373,7 @@ def api_refresh_qr(user_id, role): #user_id and role are passed by the decorator
 @admin_required #Check if user is admin
 def api_admin_dashboard(user_id, role):
     try:
-        last_3_logs = get_last3_logs()
+        last_3_logs = get_last_3_logs()
         last_3_users = get_last_3_users()
         
         #Obtain admin name
@@ -490,7 +490,7 @@ if __name__ == "__main__":
 #     if not user_id:
 #         return redirect(url_for('login'))
 
-#     last_3_logs = get_last3_logs()
+#     last_3_logs = get_last_3_logs()
 #     last_3_users = get_last_3_users()
 
 #     conn = get_db_connection()
@@ -573,7 +573,7 @@ if __name__ == "__main__":
 #     if not email:
 #         return render_template('administrator.html',
 #                             name=session.get('name', 'Administrator'),
-#                             last_3_logs=get_last3_logs(),
+#                             last_3_logs=get_last_3_logs(),
 #                             last_3_users=get_last_3_users(),
 #                             edit_redirect_error="No email provided",
 #                             edit_email=email)
@@ -582,7 +582,7 @@ if __name__ == "__main__":
 #     if not user:
 #         return render_template('administrator.html',
 #                             name=session.get('name', 'Administrator'),
-#                             last_3_logs=get_last3_logs(),
+#                             last_3_logs=get_last_3_logs(),
 #                             last_3_users=get_last_3_users(),
 #                             edit_redirect_error="User not found",
 #                             edit_email=email)
@@ -644,7 +644,7 @@ if __name__ == "__main__":
 #             error = "User deleted successfully"
     
 #     #Pass the error to administrator template
-#     last_3_logs = get_last3_logs()
+#     last_3_logs = get_last_3_logs()
 #     last_3_users = get_last_3_users()
 #     conn = get_db_connection()
 #     cur = conn.cursor()

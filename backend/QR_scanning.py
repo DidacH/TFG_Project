@@ -54,7 +54,7 @@ while True:
     cur = conn.cursor()
     cur.execute('''
         INSERT INTO logs (user_id, role, area, access_time, entry_allowed, reason)
-        VALUES (%s, %s, %s, %s, %s, %s)
+        VALUES (COALESCE(%s, 'unknown'), COALESCE(%s, 'unknown'), %s, %s, %s, %s)
     ''', (
         data['user_id'],
         data['role'],
