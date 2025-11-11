@@ -69,8 +69,6 @@ export default function FrameAdmin() {
   const [data, setData] = useState<AdminData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // # CHANGE: Removed 'downloading' state as requested
-  // const [downloading, setDownloading] = useState<'users' | 'logs' | null>(null);
 
   //Get token from localStorage
   const getToken = () => localStorage.getItem('token');
