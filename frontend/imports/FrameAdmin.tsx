@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, UserCircle, Users, FileText, LogOut, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Loader2, UserCircle, Users, FileText, LogOut, AlertTriangle, CheckCircle2, LockKeyholeIcon } from "lucide-react";
 import { cn } from "../components/ui/utils";
 
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -148,7 +148,7 @@ export default function FrameAdmin() {
                 <div className="w-full mx-auto px-4 sm:px-6 lg:px-10">
                     {/* Inner container for Title and Button alignment */}
                     <div className="relative flex justify-center items-center h-12 md:h-14 mb-3">
-                        {/*Profile Button - Positioned left within the padded container */}
+                        {/*Profile button positioned left within the padded container */}
                         <button
                             onClick={() => navigate('/profile')}
                             aria-label="User Profile"
@@ -167,23 +167,23 @@ export default function FrameAdmin() {
             </div>
 
             {/* Main Content Area */}
-            <div className="flex-grow w-full flex flex-col items-center gap-10 px-4 pb-12 pt-8 md:pt-12">
+            <div className="flex-grow w-full flex flex-col gap-10 px-4 sm:px-6 lg:px-10 pb-12 pt-8 md:pt-12">
                 
                 {/*This container centers all content and provides max width */}
-                <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="w-full px-4 sm:px-6 lg:px-10">
 
                     {/* Welcome Title */}
                     <div className="w-full mb-10">
                         <SectionTitle>Welcome, <span className="text-[#c8102e]">{data.admin_name}</span>!</SectionTitle>
                     </div>
 
-                    {/*Row 1 - Recent Activity */}
-                    <div className="w-full grid grid-cols-1 lg:grid-cols-2 lg:gap-8">
-                        {/* Recent Activity Column */}
+                    {/* Row 1 - Recent Activity */}
+                    <div className="w-full mb-12">
+                        {/* Recent Logs Section */}
                         <div className="flex flex-col gap-3">
-                            <h3 className="text-xl md:text-2xl font-semibold text-gray-800">Recent Access Logs</h3>
+                            <h3 className="text-xl md:text-2xl font-semibold text-gray-800 mb-4">Recent Access Logs</h3>
                             {data.last_3_logs.length > 0 ? (
-                                <div className="flex flex-col gap-3">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     {data.last_3_logs.map((log, index) => (
                                         <div key={`log-${index}`} className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm flex justify-between items-center">
                                             <div className="flex-1 overflow-hidden">
@@ -205,11 +205,11 @@ export default function FrameAdmin() {
                             )}
                         </div>
 
-                        {/* Recent Users Column */}
-                        <div className="flex flex-col gap-3 mt-10 lg:mt-0">
-                            <h3 className="text-xl md:text-2xl font-semibold text-gray-800">Recent Registered Users</h3>
+                        {/* Recent Users Section */}
+                        <div className="flex flex-col gap-3 mt-10">
+                            <h3 className="text-xl md:text-2xl font-semibold text-gray-800 mb-4">Recently Registered Users</h3>
                             {data.last_3_users.length > 0 ? (
-                                <div className="flex flex-col gap-3">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     {data.last_3_users.map((user, index) => (
                                         <div key={`user-${index}`} className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm">
                                             <p className="font-medium text-gray-800">{user.name} ({user.role})</p>
@@ -224,13 +224,20 @@ export default function FrameAdmin() {
                         </div>
                     </div>
 
-                    {/* # CHANGE: Row 2 - Actions */}
+                    {/* # Row 2 - Actions */}
                     <div className="w-full mt-12">
                         <h3 className="text-xl md:text-2xl font-semibold text-gray-800 mb-4">Management</h3>
-                        {/* # CHANGE: Grid for action buttons */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {/* # Grid for action buttons */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6">
                             <ActionButton 
-                                onClick={() => navigate('/admin/users')} 
+                                onClick={() => navigate('/admin/security')} 
+                                variant="secondary"
+                                icon={LockKeyholeIcon}
+                            >
+                                Security
+                            </ActionButton>
+                            <ActionButton 
+                                onClick={() => navigate('/admin/users')}
                                 variant="secondary" 
                                 icon={Users}
                             >
@@ -244,9 +251,7 @@ export default function FrameAdmin() {
                                 View Logs
                             </ActionButton>
                         </div>
-                    </div>
-                    
-                    {/* Removed Downloads Section */}
+                    </div>       
 
                     {/* Logout Button */}
                     {/* Centered the logout button container */}
