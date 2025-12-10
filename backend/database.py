@@ -203,6 +203,15 @@ def select_users():
     conn.close()
     return rows
 
+def select_roles():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM roles')
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return rows
+
 
 if __name__ == "__main__":
 
@@ -218,5 +227,8 @@ if __name__ == "__main__":
     # print("Database initialized.")
 
     # print(select_logs())
+    print(select_logs())
+    print(select_users())
+    print(select_roles())
 
     get_all_table_names()
