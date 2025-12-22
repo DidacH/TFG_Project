@@ -1,4 +1,3 @@
-"""
 import pandas as pd
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import LabelEncoder, StandardScaler
@@ -7,32 +6,23 @@ import numpy as np
 import os
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
+from psycopg2 import extras
 
-# --- Configuració ---
+# --- Configuration ---
 # Llegeix la clau d'API de SendGrid i l'email de l'administrador des de l'entorn.
 # ASSEGURA'T D'AFEGIR AQUESTES VARIABLES AL TEU FITXER .env
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")
 
-# --- Model i Preprocessament ---
-# Aquests objectes s'inicialitzaran amb un dataset d'entrenament, 
-# però els declarem aquí per a que estiguin disponibles globalment.
+# --- Model and Preprocessing ---
 model = None
 scaler = None
 label_encoders = {}
 FEATURE_COLUMNS = ['role_encoded', 'area_encoded', 'hour', 'weekday', 'is_admin']
+ANOMALY_THRESHOLD = -0.15  # Threshold for flagging anomalies
 
 def _get_dataset_for_training():
-    """
-"""
-    Simula la càrrega de dades per a l'entrenament.
-    En un escenari real, aquestes dades haurien de ser molt més extenses i 
-    haurien de provenir d'un fitxer CSV o directament de la BD.
-
-    :return: DataFrame amb dades d'entrenament.
-"""
-    """
-    # Exemple de dades inicials (tu les hauries de reemplaçar per les teves dades reals)
+    #Example initial data for training the model
     data = {
         'user_id': ['u1', 'u2', 'u3', 'u4', 'u5'],
         'email': ['u1@inst.edu', 'u2@inst.edu', 'a1@inst.edu', 'u4@inst.edu', 'u5@inst.edu'],
@@ -48,39 +38,39 @@ def _get_dataset_for_training():
     return df
 
 def preprocess_data(df):
-    """ """Aplica la transformació de característiques al DataFrame.""" """
+    """ Applys preprocessing steps to the dataframe."""
     global label_encoders, scaler
     
-    # Enginyeria de característiques temporals
+    # Time-based feature engineering
     df['hour'] = df['access_time'].dt.hour
-    df['weekday'] = df['access_time'].dt.dayofweek # Dilluns=0, Diumenge=6
+    df['weekday'] = df['access_time'].dt.dayofweek # Monday=0, Sunday=6
 
-    # Codi per a l'entrenament: ajusta i transforma les columnes categòriques
-    # Codi per a la predicció: només transforma les columnes categòriques
+    # Training code: Adjust and transform categorical columns
+    # Prediction code: Only transform categorical columns using existing encoders
     fit_and_transform = (model is None) 
     
-    # 1. Codificació de Rol i Sala
+    # Role and area encoding
     for col in ['role', 'area']:
         encoder = label_encoders.get(col, LabelEncoder())
         if fit_and_transform:
             df[f'{col}_encoded'] = encoder.fit_transform(df[col])
             label_encoders[col] = encoder
         else:
-            # Utilitza l'encoder existent i gestiona valors desconeguts
+            # Use existing encoder and handle unseen labels
             def safe_transform(val):
                 try:
                     return encoder.transform([val])[0]
                 except ValueError:
-                    # Assigna un valor alt o únic per a valors no vistos
+                    # Assign high value for unseen labels
                     return len(encoder.classes_) 
             
-            # Crea una nova columna si el valor no existeix a l'entrenament (risc d'anomalia)
+            # Create a new column with if it does not appear in the training set
             df[f'{col}_encoded'] = df[col].apply(safe_transform)
 
-    # 2. Característica binària: és administrador?
+    # Binary feature: is_admin
     df['is_admin'] = df['role'].apply(lambda x: 1 if x == 'Admin' else 0)
 
-    # 3. Escalament numèric (hora i dia de la setmana)
+    # Numerical feature scaling (hour, weekday)
     if fit_and_transform:
         scaler = StandardScaler()
         df[['hour', 'weekday']] = scaler.fit_transform(df[['hour', 'weekday']])
@@ -90,168 +80,178 @@ def preprocess_data(df):
     return df
 
 def train_security_model():
-    """ """Entrena el model Isolation Forest amb un dataset inicial.""" """
+    """ Train the model using log data (Isolation Forest) """
     global model
     df_train = _get_dataset_for_training()
     df_processed = preprocess_data(df_train)
     
     X_train = df_processed[FEATURE_COLUMNS]
 
-    # Isolation Forest: bo per a la detecció d'anomalies
+    # Isolation Forest: Good for anomaly detection in high-dimensional data. Also good since we don't have labeled anomalies
     model = IsolationForest(contamination='auto', random_state=42)
     model.fit(X_train)
     print("Security model trained successfully.")
 
 def predict_anomaly(log_entry):
     """
-"""
-    Calcula la puntuació d'anomalia per a una única entrada de log.
-    :param log_entry: Diccionari amb les dades del log.
-    :return: Puntuació d'anomalia (score), i la classificació (True/False per anomalia)
-"""
+    Compute the anomaly score for a single log entry.
+    :param log_entry: Dictionary with log data.
+    :return: Anomaly score (lower is worse), and classification (True/False for anomaly)
     """
     global model
     if model is None:
-        train_security_model() # Entrena si encara no s'ha fet
+        train_security_model() # Train if not already trained
     
-    # 1. Converteix l'entrada a DataFrame (com el dataset d'entrenament)
+    # Convert the entry to dataframe (As in the training dataset)
     log_df = pd.DataFrame([log_entry])
     log_df['access_time'] = pd.to_datetime(log_df['access_time'])
     
-    # 2. Preprocessament
-    # IMPORTANT: utilitza els transformadors *existents* (scaler, encoders)
+    # Preprocessing
+    # Using existing transformers (scaler, encoders)
     log_processed = preprocess_data(log_df)
     
     X_predict = log_processed[FEATURE_COLUMNS]
 
-    # 3. Predicció: 
-    # - score_samples retorna l'índex d'anomalia. 
-    #   Com més baix (més negatiu), més anòmal.
-    # - predict retorna 1 (normal) o -1 (anomalia)
+    # Prediction: 
+    # - score_samples returns the anomaly index. 
+    #   The lower (more negative), the more anomalous.
+    # - predict returns 1 (normal) or -1 (anomaly)
     anomaly_score = model.decision_function(X_predict)[0]
-    is_anomaly = model.predict(X_predict)[0] == -1
+    is_anomaly = anomaly_score < ANOMALY_THRESHOLD
     
     return anomaly_score, is_anomaly
 
+def get_admin_emails():
+    """Fetches a list of emails for all users with the 'Admin' role."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT email FROM users WHERE role = 'Admin'")
+        # fetchall returns a tuple list. We extract the first element of each tuple.
+        emails = [row[0] for row in cur.fetchall()]
+        return emails
+    except Exception as e:
+        print(f"Error fetching admin emails: {e}")
+        return []
+    finally:
+        cur.close()
+        conn.close()
+
 def send_anomaly_alert(log_entry, score):
-    """ """Envia un correu electrònic als administradors en cas d'anomalia.""" """
-    if not SENDGRID_API_KEY or not ADMIN_EMAIL:
-        print("ALERT: SendGrid keys not configured. Email not sent.")
+    """ Sends an email to ALL administrators in case of an anomaly. """
+    
+    # Obtain admin emails from the database
+    admin_emails = get_admin_emails()
+    
+    if not admin_emails:
+        print("ALERT: Anomaly detected but NO ADMINS found in database.")
         return
 
-    subject = f"ALERTA D'ANOMALIA D'ACCÉS: Score {score:.4f}"
+    subject = f"SUSPICIOUS ACCESS ALERT: Score {score:.4f}"
+    
+    # HTML Body
     body_html = f"""
-"""
         <html>
         <body>
-            <h2>Access Anomaly Detected</h2>
+            <h2 style="color:red;">Access Anomaly Detected</h2>
             <p>An anomalous access log was recorded by the security model:</p>
             <ul>
                 <li><strong>User ID:</strong> {log_entry.get('user_id')}</li>
                 <li><strong>Role:</strong> {log_entry.get('role')}</li>
                 <li><strong>Area:</strong> {log_entry.get('area')}</li>
                 <li><strong>Access Time:</strong> {log_entry.get('access_time')}</li>
-                <li><strong>Entry Allowed:</strong> {'Yes' if log_entry.get('entry_allowed') else 'No'}</li>
-                <li><strong>Reason:</strong> {log_entry.get('reason')}</li>
+                <li><strong>Reason:</strong> {log_entry.get('reason', 'AI Detected Anomaly')}</li>
             </ul>
-            <p><strong>Risk Score (lower is worse):</strong> {score:.4f}</p>
-            <p>Please review the logs immediately.</p>
+            <p><strong>Risk Score:</strong> {score:.4f}</p>
         </body>
         </html>
-"""
     """
 
+    # --- SIMULATION MODE ---
+    if not SENDGRID_API_KEY:
+        print("\n" + "="*30)
+        print(" [SIMULATION] SENDGRID KEY NOT FOUND")
+        print(f" To: {admin_emails}")
+        print(f" Subject: {subject}")
+        print(" Body: Anomaly detected... (email content omitted)")
+        print("="*30 + "\n")
+        return
+
+    # --- REAL EMAIL SENDING ---
     message = Mail(
-        from_email='security-alert@yourinstitution.com',
-        to_emails=ADMIN_EMAIL,
+        from_email='security-alert@teu-domini.com', # Verify this sender email in SendGrid
+        to_emails=admin_emails,
         subject=subject,
         html_content=body_html)
     
     try:
         sg = SendGridAPIClient(SENDGRID_API_KEY)
         response = sg.send(message)
-        print(f"Alert email sent. Status Code: {response.status_code}")
+        print(f"Alert email sent to {len(admin_emails)} admins. Status: {response.status_code}")
     except Exception as e:
         print(f"Error sending email: {e}")
 
-# Entrena el model a l'inici de l'aplicació
-# IMPORTANT: Aquesta crida hauria de ser en un punt d'inici (com ara el final de app.py)
-# o en una funció de càrrega per a que el model estigui a memòria.
-train_security_model()
-
 
 def fetch_all_logs():
-    """ """Obté tots els logs i dades d'usuari rellevants de la BD.""" """
+    """ Obtain all logs and relevant user data from the database. """
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=extras.DictCursor)
     
-    # Utilitza un JOIN per obtenir tota la informació necessària
+    # Use JOIN to obtain user data along with logs
     cur.execute("""
-"""
+
         SELECT 
             l.access_time, l.area, l.entry_allowed, l.reason,
             u.role, u.email, u.id AS user_id, u.registered_at
         FROM logs l
         JOIN users u ON l.user_id = u.id
         ORDER BY l.access_time DESC
-"""
     """)
     logs = cur.fetchall()
     cur.close()
     conn.close()
     
-    # Converteix els resultats directament a DataFrame
+    # Convert results to DataFrame
     return pd.DataFrame(logs)
 
 
 def batch_analysis_deep_dive():
     """
-"""
-    Realitza una anàlisi més profunda dels logs, ideal per a l'anàlisi diària/setmanal.
-    Aquesta anàlisi pot incloure la detecció de patrons de "Falsos Positius" (FP) o 
-    "Amenaces per Patrons de Múltiples Logs".
-"""
+    Perform a deeper analysis of the logs. To be done daily or weekly.
     """
     df_logs = fetch_all_logs()
     if df_logs.empty:
         print("No logs available for deep dive analysis.")
         return
     
-    # Assegura el format de temps
     df_logs['access_time'] = pd.to_datetime(df_logs['access_time'])
     df_logs = preprocess_data(df_logs.copy())
 
-    # --- Anàlisi d'Exemples de Patrons ---
-
-    # 1. Detecció de Patrons Anòmals per Usuari: 
-    # (Ex: usuari que només accedeix a la Sala_1, però de sobte intenta la Sala_3)
-    
-    # Reentrena amb un model més sensible o amb un altre algorisme (IsolationForest del 
-    # mòdul global ja s'ha entrenat a l'inici, el reutilitzarem per a consistència)
+    # 1. Detection of various anomaly patterns: 
+    # (Ex: user that only accesses room_1, but suddenly accesses room_5 at 3 AM)
     X_logs = df_logs[FEATURE_COLUMNS]
     df_logs['deep_anomaly_score'] = model.decision_function(X_logs)
     
-    # 2. Detecció d'Abús de Temps (Ex: Intent de molts accessos en poc temps)
-    
-    # Calcula el temps transcorregut (en segons) des de l'últim accés de cada usuari
+    # 2. Time-based Abuse Detection:
+
+    # Calculates the elapsed time (in seconds) since the last access of each user
     df_logs['time_diff'] = df_logs.groupby('user_id')['access_time'].diff().dt.total_seconds().fillna(0)
     
-    # Identifica entrades on la diferència de temps és molt petita (excepte 0, el primer log)
-    # LLINDAR_ABÚS: Menys de 5 minuts (300s) d'un mateix usuari a la mateixa sala 
-    # (podria indicar abús, a part del límit de 30s del QR)
-    df_logs['is_time_abuse'] = (df_logs['time_diff'] > 0) & (df_logs['time_diff'] < 300)
+    # Identify accesses that are too close in time
+    # ABUSE_THRESHOLD: Less than 1 minute between same user's accesses
+    df_logs['is_time_abuse'] = (df_logs['time_diff'] > 0) & (df_logs['time_diff'] < 60)
     
-    # 3. Detecció de Falsos Positius del QR_Scanner: 
-    # (Ex: Logs amb QR invàlid per expiració, però amb un patró temporalment normal)
+    # 3. Detection of False Positives from QR_Scanner: 
+    # (Ex: Logs with expired QR, but with a temporally normal pattern)
     
-    # Els logs que han estat marcats com a 'expired' (pel validador del QR) però 
-    # la IA els va marcar com a 'Normal' (Score > -0.15) en l'anàlisi en temps real.
+    # Logs that have been labeled as 'expired' (by QR validator) but 
+    # the AI model marked them as 'Normal' (Score > -0.15) in real-time analysis.
     false_positives = df_logs[
         (df_logs['reason'].str.contains('expired') & 
          df_logs['deep_anomaly_score'] > ANOMALY_THRESHOLD)
     ]
 
-    # --- Generació d'Informes (simulació) ---
+    # --- Report Generation ---
     report = {
         'total_logs': len(df_logs),
         'anomalous_logs': df_logs[df_logs['deep_anomaly_score'] < ANOMALY_THRESHOLD].shape[0],
@@ -273,7 +273,7 @@ def batch_analysis_deep_dive():
 
     # AFEGIR: Lògica per enviar un correu amb el Report d'Anàlisi Global
 
-# Si vols provar l'anàlisi de batchs:
-# batch_analysis_deep_dive()
 
-"""
+
+# To run the deep dive analysis:
+# batch_analysis_deep_dive()

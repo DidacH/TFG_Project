@@ -22,9 +22,22 @@ def generate_qr(user_id, secret_key):
     return img_bytes, timestamp
 
 
-def verify_qr(content, secret_key):
+# --- HARD RULES DEFINITIONS ---
+ACCESS_POLICY = {
+    'Student': ['Classroom_1', 'Library', 'Lab_A'],
+    'Professor': ['Classroom_1', 'Library', 'Lab_A', 'Office_1'],
+    'Staff': ['Office_1', 'Server_Room', 'Lab_A'],
+    'Admin': 'ALL' 
+}
+
+GLOBAL_CLOSED_HOURS = [23, 0, 1, 2, 3, 4, 5, 6]
+
+
+def verify_qr(content, secret_key, target_area):
     now = int(time.time())
     expiration_seconds = 30  #seconds
+    current_dt = datetime.fromtimestamp(now)
+    time_str = current_dt.strftime('%Y-%m-%d %H:%M:%S')
     
     try:
         user_id, timestamp_str, received_signature = content.split(":")
@@ -32,10 +45,10 @@ def verify_qr(content, secret_key):
     except ValueError:
         return {
             'valid': False,
-            'reason': 'malformed',
+            'reason': 'Malformed',
             'user_id': None,
             'role': None,
-            'access_time': datetime.fromtimestamp(now).strftime('%Y-%m-%d %H:%M:%S')
+            'access_time': time_str
         }
 
     message = f"{user_id}:{timestamp}"
@@ -43,10 +56,10 @@ def verify_qr(content, secret_key):
     if not hmac.compare_digest(received_signature, expected_signature):
         return {
             'valid': False,
-            'reason': 'forged',
+            'reason': 'Forged',
             'user_id': user_id,
             'role': None,
-            'access_time': datetime.fromtimestamp(now).strftime('%Y-%m-%d %H:%M:%S')
+            'access_time': time_str
         }
 
     #Fetch user info if signature valid
@@ -60,10 +73,10 @@ def verify_qr(content, secret_key):
     if user is None:
         return {
             'valid': False,
-            'reason': 'not registered',
+            'reason': 'Not registered',
             'user_id': user_id,
             'role': None,
-            'access_time': datetime.fromtimestamp(now).strftime('%Y-%m-%d %H:%M:%S')
+            'access_time': time_str
         }
 
     role = user[0]
@@ -72,18 +85,28 @@ def verify_qr(content, secret_key):
     if now - timestamp > expiration_seconds+grace_period:
         return {
             'valid': False,
-            'reason': 'expired',
+            'reason': 'Expired',
             'user_id': user_id,
             'role': role,
-            'access_time': datetime.fromtimestamp(now).strftime('%Y-%m-%d %H:%M:%S')
+            'access_time': time_str
         }
+    
+    # Check role permissions
+    allowed_areas = ACCESS_POLICY.get(role, [])
+    if allowed_areas != 'ALL' and target_area not in allowed_areas:
+        return {'valid': False, 'reason': f'Area violation', 'user_id': user_id, 'role': role, 'access_time': time_str}
+
+    # Check Global Time (Facility Closed Hours)
+    # Exception: Admins can access anytime
+    if current_dt.hour in GLOBAL_CLOSED_HOURS and role != 'Admin':
+        return {'valid': False, 'reason': 'Facilities closed', 'user_id': user_id, 'role': role, 'access_time': time_str}
 
     return {
         'valid': True,
         'reason': 'valid',
         'user_id': user_id,
         'role': role,
-        'access_time': datetime.fromtimestamp(now).strftime('%Y-%m-%d %H:%M:%S')
+        'access_time': time_str
     }
 
 

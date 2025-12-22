@@ -45,9 +45,10 @@ while True:
         break
 
     print("QR Code Content:", result)
-    data = verify_qr(result, SIGNATURE_KEY)
 
-    area = "area_1"
+    area = input("Enter target area for access attempt (e.g., Classroom_1, Server_Room): ")
+    
+    data = verify_qr(result, SIGNATURE_KEY, area)
 
     #Log the attempt
     conn = get_db_connection()
