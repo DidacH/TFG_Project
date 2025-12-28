@@ -63,7 +63,8 @@ def init_logs_table():
             area TEXT NOT NULL,
             access_time TEXT NOT NULL,
             entry_allowed INTEGER NOT NULL,
-            reason TEXT NOT NULL
+            reason TEXT NOT NULL,
+            risk_score FLOAT DEFAULT 0.0
         )
     ''')
     conn.commit()
