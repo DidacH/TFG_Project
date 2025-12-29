@@ -4,18 +4,24 @@ import cv2
 from dotenv import load_dotenv
 import os
 from database import get_db_connection
-from security_analyzer import predict_anomaly, send_anomaly_alert, train_security_model
+from security_analyzer import predict_anomaly, send_anomaly_alert, load_or_train_model
 import threading
+from time import sleep
 
 load_dotenv()  #Load environment variables from .env file
 
 SIGNATURE_KEY = os.getenv("SIGNATURE_KEY").encode('utf-8')  #Ensure the key is in bytes format
+CURRENT_AREA = os.getenv("DEVICE_AREA_NAME")
+
+print(f"\n" + "="*40)
+print(f" System initialized.")
+print(f" Area: {CURRENT_AREA}")
 
 # --- PRE-LOAD THE MODEL ---
 # Load or train the security model once at startup to avoid delays during scanning
 print("Initializing security model and AI...")
 try:
-    train_security_model() # Or load existing model (.pkl)
+    load_or_train_model() # Load .pkl with the AI model or train if not present
     print("AI model ready.")
 except Exception as e:
     print(f"Alert: Could not load AI model {e}")
@@ -110,45 +116,46 @@ def scan_qr():
     return None
 
 
+#--- MAIN LOOP ---
 while True:
-    print("Scanning for QR Code... (press ESC to quit)")
-    result = scan_qr()
-    if result is None:
+
+    print(f"--- Active scanner in: {CURRENT_AREA} ---")
+    print("Scan the QR code...")
+    qr_content = scan_qr()
+    if qr_content is None:
         break
 
-    print("QR Code Content:", result)
+    print(f"Read: {qr_content[:10]}...")
 
-    area = input("Enter target area for access attempt (e.g., Classroom_1, Server_Room): ")
-    
-    data = verify_qr(result, SIGNATURE_KEY, area)
+    validation_result = verify_qr(qr_content, SIGNATURE_KEY, CURRENT_AREA)
 
-    #Log the attempt
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('''
-        INSERT INTO logs (user_id, role, area, access_time, entry_allowed, reason)
-        VALUES (COALESCE(%s, 'unknown'), COALESCE(%s, 'unknown'), %s, %s, %s, %s)
-    ''', (
-        data['user_id'],
-        data['role'],
-        area,
-        data['access_time'],
-        int(data['valid']),
-        data['reason']
-    ))
-    conn.commit()
-    cur.close()
-    conn.close()
+    if validation_result['valid']:
+        # Immediate feedback to user
+        print("\n" + "="*40)
+        print(f" ACCESS GRANTED: {validation_result['role']}")
+        print(f" Welcome User {validation_result['user_id']}")
+        print("="*40 + "\n")
+        # HERE GOES THE DOOR UNLOCKING LOGIC
+        
+        # ASINCHRONOUS PROCESSING (AI + LOGS)
+        # Start a thread to handle the background processing
+        bg_thread = threading.Thread(
+            target=process_access_log_async, 
+            args=(validation_result, CURRENT_AREA)
+        )
+        bg_thread.start()
 
-    #Notify user
-    if data['valid']:
-        print("Access Granted!")
     else:
-        print(f"Invalid QR Code: {data['reason']}")
-
+        # Immediate feedback to user
+        print("\n" + "x"*40)
+        print(f" ACCESS DENIED: {validation_result['reason']}")
+        print("x"*40 + "\n")
+        
+        # Store the failed attempt log asynchronously
+        bg_thread = threading.Thread(
+            target=process_access_log_async, 
+            args=(validation_result, CURRENT_AREA)
+        )
+        bg_thread.start()
     
-
-
-
-
-
+    sleep(2)  #Small delay before next scan

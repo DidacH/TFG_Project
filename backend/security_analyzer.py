@@ -4,22 +4,34 @@ from sklearn.preprocessing import LabelEncoder, StandardScaler
 from database import get_db_connection
 import numpy as np
 import os
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from psycopg2 import extras
+import pickle
 
-# --- Configuration ---
-# Llegeix la clau d'API de SendGrid i l'email de l'administrador des de l'entorn.
-# ASSEGURA'T D'AFEGIR AQUESTES VARIABLES AL TEU FITXER .env
-SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
-ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")
+# --- SMTP CONFIGURATION ---
+SMTP_EMAIL = os.getenv("SMTP_EMAIL")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 
 # --- Model and Preprocessing ---
+MODEL_FILE = 'security_model_data.pkl'
 model = None
 scaler = None
 label_encoders = {}
 FEATURE_COLUMNS = ['role_encoded', 'area_encoded', 'hour', 'weekday', 'is_admin']
-ANOMALY_THRESHOLD = -0.15  # Threshold for flagging anomalies
+ANOMALY_THRESHOLD = 0.0 #-0.15  # Threshold for flagging anomalies
+
+def save_model_artifacts():
+    """Save the model, scaler, and encoders to file."""
+    artifacts = {
+        'model': model,
+        'scaler': scaler,
+        'label_encoders': label_encoders
+    }
+    with open(MODEL_FILE, 'wb') as f:
+        pickle.dump(artifacts, f)
+    print(f"Model and artifacts stored in {MODEL_FILE}")
 
 def _get_dataset_for_training():
     #Example initial data for training the model
@@ -91,6 +103,39 @@ def train_security_model():
     model = IsolationForest(contamination='auto', random_state=42)
     model.fit(X_train)
     print("Security model trained successfully.")
+
+    save_model_artifacts()
+
+def load_or_train_model(retry_count=0):
+    global model, scaler, label_encoders
+
+    MAX_RETRIES = 2
+
+    if retry_count >= MAX_RETRIES:
+        print(f"CRITICAL ERROR: Could not load the model after {retry_count} attempts.")
+        print("Verify write permissions or training errors.")
+        return
+    
+    if os.path.exists(MODEL_FILE):
+        try:
+            print("Loading existing model...")
+            with open(MODEL_FILE, 'rb') as f:
+                artifacts = pickle.load(f)
+                
+            model = artifacts['model']
+            scaler = artifacts['scaler']
+            label_encoders = artifacts['label_encoders']
+            print("Model loaded successfully from disk.")
+            return
+        except Exception as e:
+            print(f"Error loading the model (corrupt file?): {e}")
+            print("Proceeding to retrain...")
+    else:
+        print("No saved model was found.")
+
+    # Retrain if loading failed or no file
+    train_security_model()
+    load_or_train_model(retry_count + 1)  # Recursive call to load the newly trained model
 
 def predict_anomaly(log_entry):
     """
@@ -168,9 +213,9 @@ def send_anomaly_alert(log_entry, score):
     """
 
     # --- SIMULATION MODE ---
-    if not SENDGRID_API_KEY:
+    if not SMTP_EMAIL or not SMTP_PASSWORD:
         print("\n" + "="*30)
-        print(" [SIMULATION] SENDGRID KEY NOT FOUND")
+        print(" [SIMULATION] SMTP EMAIL OR PASSWORD NOT FOUND")
         print(f" To: {admin_emails}")
         print(f" Subject: {subject}")
         print(" Body: Anomaly detected... (email content omitted)")
@@ -178,18 +223,30 @@ def send_anomaly_alert(log_entry, score):
         return
 
     # --- REAL EMAIL SENDING ---
-    message = Mail(
-        from_email='security-alert@teu-domini.com', # Verify this sender email in SendGrid
-        to_emails=admin_emails,
-        subject=subject,
-        html_content=body_html)
-    
     try:
-        sg = SendGridAPIClient(SENDGRID_API_KEY)
-        response = sg.send(message)
-        print(f"Alert email sent to {len(admin_emails)} admins. Status: {response.status_code}")
+        # Configurar el missatge
+        msg = MIMEMultipart()
+        msg['From'] = SMTP_EMAIL
+        msg['Subject'] = subject
+        # We send hidden to multiple admins
+        msg['To'] = SMTP_EMAIL 
+        
+        msg.attach(MIMEText(body_html, 'html'))
+
+        # Connect to Gmail SMTP server
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls() # Secure encryption
+        server.login(SMTP_EMAIL, SMTP_PASSWORD)
+        
+        # Send the email to all admins
+        text = msg.as_string()
+        server.sendmail(SMTP_EMAIL, admin_emails, text)
+        
+        server.quit()
+        print(f"✅ Alert correctly sent to {len(admin_emails)} administrators.")
+        
     except Exception as e:
-        print(f"Error sending email: {e}")
+        print(f"❌ Error sending email via Gmail: {e}")
 
 
 def fetch_all_logs():
