@@ -473,6 +473,184 @@ def api_download_users(user_id, role):
     except Exception as e:
         print(f"Error downloading users: {e}")
         return jsonify({'message': f'Internal server error: {str(e)}'}), 500
+    
+#Endpoint to render admin security dashboard    
+@app.route('/api/admin/security')
+def security_dashboard():
+    """Renders main security page."""
+    return render_template('security.html')
+
+#Endpoint to get suspicious logs
+@app.route('/api/admin/logs/suspicious')
+def get_suspicious_logs():
+    """Returns accepted logs but with a low score below the threshold (suspicious)."""
+    threshold = float(os.getenv('ANOMALY_THRESHOLD', -0.15))
+    conn = get_db_connection()
+    cur = conn.cursor()
+    # Query: Allowed entries with risk_score below threshold
+    cur.execute("""
+        SELECT id, user_id, role, area, access_time, risk_score, reason 
+        FROM logs 
+        WHERE entry_allowed = TRUE AND risk_score < %s
+        ORDER BY access_time DESC LIMIT 50
+    """, (threshold,))
+    logs = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    # Convert to dicts for JSON response
+    data = [{'id': r[0], 'user': r[1], 'role': r[2], 'area': r[3], 
+             'time': str(r[4]), 'score': r[5], 'reason': r[6]} for r in logs]
+    return jsonify(data)
+
+#Endpoint to get denied logs
+@app.route('/api/admin/logs/denied')
+def get_denied_logs():
+    """Returns DENIED logs (Hard Rules)."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, user_id, role, area, access_time, reason 
+        FROM logs 
+        WHERE entry_allowed = FALSE
+        ORDER BY access_time DESC LIMIT 50
+    """)
+    logs = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    data = [{'id': r[0], 'user': r[1], 'role': r[2], 'area': r[3], 
+             'time': str(r[4]), 'reason': r[5]} for r in logs]
+    return jsonify(data)
+
+# Endpoint to manage access rules
+@app.route('/api/admin/rules/access', methods=['GET', 'POST', 'DELETE'])
+def manage_access_rules():
+    """Manage access rules (Who can access where)."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    if request.method == 'GET':
+        cur.execute("SELECT id, role, allowed_area FROM access_rules")
+        rows = cur.fetchall()
+        data = [{'id': r[0], 'role': r[1], 'area': r[2]} for r in rows]
+        conn.close()
+        return jsonify(data)
+    
+    if request.method == 'POST':
+        data = request.json
+        cur.execute("INSERT INTO access_rules (role, allowed_area) VALUES (%s, %s)", 
+                    (data['role'], data['area']))
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'success'})
+
+    if request.method == 'DELETE':
+        rule_id = request.args.get('id')
+        cur.execute("DELETE FROM access_rules WHERE id = %s", (rule_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'deleted'})
+
+# Endpoint to manage alert rules
+@app.route('/api/admin/rules/alerts', methods=['GET', 'POST', 'DELETE'])
+def manage_alert_rules():
+    """Manage alert rules (When to send email)."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    if request.method == 'GET':
+        cur.execute("SELECT id, event_type, role_filter, area_filter FROM alert_rules")
+        rows = cur.fetchall()
+        data = [{'id': r[0], 'event': r[1], 'role': r[2], 'area': r[3]} for r in rows]
+        conn.close()
+        return jsonify(data)
+
+    if request.method == 'POST':
+        data = request.json
+        cur.execute("INSERT INTO alert_rules (event_type, role_filter, area_filter) VALUES (%s, %s, %s)", 
+                    (data['event'], data['role'], data['area']))
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'success'})
+        
+    if request.method == 'DELETE':
+        rule_id = request.args.get('id')
+        cur.execute("DELETE FROM alert_rules WHERE id = %s", (rule_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'deleted'})
+    
+# Endpoint for Security Dashboard Data
+@app.route('/api/admin/security-data', methods=['GET'])
+@token_required
+@admin_required
+def api_security_dashboard_data(user_id, role):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute('SELECT name FROM users WHERE id = %s', (user_id,))
+        user_row = cur.fetchone()
+        admin_name = user_row['name'] if user_row else "Admin"
+
+        # Blockings during last 24h
+        yesterday = datetime.now() - timedelta(days=1)
+        cur.execute("""
+            SELECT COUNT(*) as blocked 
+            FROM logs 
+            WHERE entry_allowed = FALSE AND access_time >= %s
+        """, (yesterday,))
+        blocked_24h = cur.fetchone()['blocked']
+
+        # Active threats (Unique users denied access in last 24h)
+        cur.execute("""
+            SELECT count(distinct user_id) as threats 
+            FROM logs 
+            WHERE entry_allowed = FALSE AND access_time >= %s
+        """, (yesterday,))
+        active_threats = cur.fetchone()['threats']
+
+        # Obtain recent incidents (denied accesses)
+        cur.execute("""
+            SELECT id, user_id, role, area, access_time, entry_allowed, reason 
+            FROM logs 
+            WHERE entry_allowed = FALSE 
+            ORDER BY access_time DESC LIMIT 10
+        """)
+        raw_incidents = cur.fetchall()
+        
+        recent_incidents = []
+        for log in raw_incidents:
+            severity = 'high' if 'Ban' in log['reason'] or 'Security' in log['reason'] else 'medium'
+            
+            recent_incidents.append({
+                'id': str(log['id']),
+                'severity': severity,
+                'type': log['reason'] or 'Access Denied',
+                'source_ip': log['user_id'], # We use user_id as source identifier
+                'timestamp': str(log['access_time']),
+                'status': 'pending' # Default status
+            })
+
+        cur.close()
+        conn.close()
+
+        response_data = {
+            'admin_name': admin_name,
+            'stats': {
+                'active_threats': active_threats,
+                'blocked_ips_24h': blocked_24h,
+                'system_health': 'Good'
+            },
+            'recent_incidents': recent_incidents
+        }
+
+        return jsonify(response_data), 200
+
+    except Exception as e:
+        print(f"Error fetching security data: {e}")
+        return jsonify({'message': f'Internal server error: {str(e)}'}), 500
 
 
 #=================================================

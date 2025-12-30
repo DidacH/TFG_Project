@@ -32,11 +32,13 @@ interface ActionButtonProps {
     children: React.ReactNode;
     variant?: 'primary' | 'secondary';
     isLoading?: boolean;
+    disabled?: boolean;
     className?: string;
     icon?: React.ElementType; //To add icons
 }
-function ActionButton({ onClick, children, variant = 'primary', isLoading = false, className = '', icon: Icon }: ActionButtonProps) {
+function ActionButton({ onClick, children, variant = 'primary', isLoading = false, disabled = false, className = '', icon: Icon }: ActionButtonProps) {
     const baseClasses = "box-border cursor-pointer flex h-[50px] items-center justify-center rounded-[8px] w-full transition-colors font-medium text-lg md:text-xl";
+    const isButtonDisabled = isLoading || disabled;
     const variantClasses = {
         primary: "bg-[#c8102e] hover:bg-[#b00f29] active:bg-[#a00d25] text-white shadow-lg hover:shadow-xl",
         secondary: "bg-[#eeeeee] hover:bg-[#e0e0e0] active:bg-[#d5d5d5] text-black shadow-md hover:shadow-lg"
@@ -45,7 +47,7 @@ function ActionButton({ onClick, children, variant = 'primary', isLoading = fals
         <button 
             onClick={onClick} 
             className={cn(baseClasses, variantClasses[variant], isLoading ? 'opacity-75 cursor-not-allowed' : '', className)}
-            disabled={isLoading}
+            disabled={isButtonDisabled}
         >
             {isLoading ? <Loader2 className="animate-spin h-6 w-6" /> : (
                 <div className="flex items-center justify-center gap-2">
@@ -69,9 +71,19 @@ export default function FrameAdmin() {
   const [data, setData] = useState<AdminData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   //Get token from localStorage
   const getToken = () => localStorage.getItem('token');
+
+  const handleNavigation = (path: string, actionKey: string) => {
+    setActionLoading(actionKey); // Activate spinner animation
+    
+    // Small timeout to show loading effect
+    setTimeout(() => {
+        navigate(path);
+    }, 500);
+  };
 
   //Logout handler
   const handleLogout = useCallback(() => {
@@ -151,6 +163,7 @@ export default function FrameAdmin() {
                         {/*Profile button positioned left within the padded container */}
                         <button
                             onClick={() => navigate('/profile')}
+                            disabled={!!actionLoading}
                             aria-label="User Profile"
                             className="absolute left-0 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 md:w-12 md:h-12 bg-[#eeeeee] hover:bg-[#e0e0e0] active:bg-[#d5d5d5] rounded-full transition-colors"
                         >
@@ -230,23 +243,29 @@ export default function FrameAdmin() {
                         {/* # Grid for action buttons */}
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6">
                             <ActionButton 
-                                onClick={() => navigate('/admin/security')} 
+                                onClick={() => handleNavigation('/security', 'security')}
                                 variant="secondary"
                                 icon={LockKeyholeIcon}
+                                isLoading={actionLoading === 'security'}
+                                disabled={actionLoading !== null}
                             >
                                 Security
                             </ActionButton>
                             <ActionButton 
-                                onClick={() => navigate('/admin/users')}
+                                onClick={() => handleNavigation('/users', 'users')}
                                 variant="secondary" 
                                 icon={Users}
+                                isLoading={actionLoading === 'users'}
+                                disabled={actionLoading !== null}
                             >
                                 Manage Users
                             </ActionButton>
                             <ActionButton 
-                                onClick={() => navigate('/admin/logs')} 
+                                onClick={() => handleNavigation('/logs', 'logs')}
                                 variant="secondary" 
                                 icon={FileText}
+                                isLoading={actionLoading === 'logs'}
+                                disabled={actionLoading !== null}
                             >
                                 View Logs
                             </ActionButton>
@@ -256,8 +275,14 @@ export default function FrameAdmin() {
                     {/* Logout Button */}
                     {/* Centered the logout button container */}
                     <div className="w-full max-w-xs md:max-w-sm mt-12 mx-auto">
-                      <ActionButton onClick={handleLogout} variant="primary" icon={LogOut}>
-                        Log Out
+                        <ActionButton 
+                            onClick={handleLogout} 
+                            variant="primary" 
+                            icon={LogOut} 
+                            isLoading={actionLoading === 'logout'}
+                            disabled={actionLoading !== null}
+                        >
+                            Log Out
                       </ActionButton>
                     </div>
 
