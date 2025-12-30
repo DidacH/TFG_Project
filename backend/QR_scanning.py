@@ -4,9 +4,10 @@ import cv2
 from dotenv import load_dotenv
 import os
 from database import get_db_connection
-from security_analyzer import predict_anomaly, send_anomaly_alert, load_or_train_model
+from security_analyzer import predict_anomaly, send_anomaly_alert, load_or_train_model, send_access_denied_alert
 import threading
 from time import sleep
+from security_analyzer import send_anomaly_alert
 
 load_dotenv()  #Load environment variables from .env file
 
@@ -25,6 +26,60 @@ try:
     print("AI model ready.")
 except Exception as e:
     print(f"Alert: Could not load AI model {e}")
+
+
+def check_should_notify_hard_rule(qr_data, target_area):
+    """
+    Check if invalid access needs to be notified.
+    Returns True if an email should be sent.
+    """
+    if qr_data['valid']:
+        return False # If valid, no hard rule violation so no notification
+
+    error_code = qr_data.get('error_code')
+    role = qr_data.get('role', 'Unknown')
+    
+    should_notify = False
+    
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        query = """
+            SELECT id FROM alert_rules 
+            WHERE is_active = TRUE
+            AND event_type = %s
+            AND (role_filter = 'ALL' OR role_filter = %s)
+            AND (area_filter = 'ALL' OR area_filter = %s)
+            LIMIT 1
+        """
+        cur.execute(query, (error_code, role, target_area))
+        result = cur.fetchone()
+        
+        if result:
+            should_notify = True
+            
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"Error while checking alert rules: {e}")
+
+    return should_notify
+
+def send_hard_rule_alert(qr_data, target_area):
+    """ Sends a specific email for Hard Rules (different from the AI one) """
+    
+    print(f"📧 SENDING HARD RULE BREAK NOTIFICATION: {qr_data['error_code']}")
+    
+    log_entry = {
+        'user_id': qr_data['user_id'],
+        'role': qr_data['role'],
+        'area': target_area,
+        'access_time': qr_data['access_time'],
+        'reason': f"HARD RULE: {qr_data['reason']}"
+    }
+    
+    send_access_denied_alert(log_entry)
 
 
 def process_access_log_async(qr_data, target_area):
@@ -60,6 +115,13 @@ def process_access_log_async(qr_data, target_area):
                 
         except Exception as e:
             print(f"Error durant l'anàlisi IA: {e}")
+    else:
+        # Check if we need to send a hard rule violation alert
+        if check_should_notify_hard_rule(qr_data, target_area):
+            print("[BACKGROUND] ALERT: Hard rule violation. Needs to be notified.")
+            send_hard_rule_alert(qr_data, target_area)
+        else:
+            print("[BACKGROUND] Access denied but no notification needs to be sent.")
 
     # Store the log in the database
     # Open the connection inside the thread, as it may not be thread-safe to share connections

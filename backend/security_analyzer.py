@@ -20,7 +20,15 @@ model = None
 scaler = None
 label_encoders = {}
 FEATURE_COLUMNS = ['role_encoded', 'area_encoded', 'hour', 'weekday', 'is_admin']
-ANOMALY_THRESHOLD = 0.0 #-0.15  # Threshold for flagging anomalies
+raw_threshold = os.getenv("ANOMALY_THRESHOLD", "-0.15") # Threshold for flagging anomalies
+
+try:
+    # Convert to float
+    ANOMALY_THRESHOLD = float(raw_threshold)
+    print(f"Anomaly threshold set to {ANOMALY_THRESHOLD}")
+except ValueError:
+    print(f"⚠️ Error: El valor '{raw_threshold}' al .env no és vàlid. Usant -0.15 per defecte.")
+    ANOMALY_THRESHOLD = -0.15
 
 def save_model_artifacts():
     """Save the model, scaler, and encoders to file."""
@@ -212,19 +220,63 @@ def send_anomaly_alert(log_entry, score):
         </html>
     """
 
-    # --- SIMULATION MODE ---
-    if not SMTP_EMAIL or not SMTP_PASSWORD:
-        print("\n" + "="*30)
-        print(" [SIMULATION] SMTP EMAIL OR PASSWORD NOT FOUND")
-        print(f" To: {admin_emails}")
-        print(f" Subject: {subject}")
-        print(" Body: Anomaly detected... (email content omitted)")
-        print("="*30 + "\n")
+    # --- EMAIL SENDING ---
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = SMTP_EMAIL
+        msg['Subject'] = subject
+        # We send hidden to multiple admins
+        msg['To'] = SMTP_EMAIL 
+        
+        msg.attach(MIMEText(body_html, 'html'))
+
+        # Connect to Gmail SMTP server
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls() # Secure encryption
+        server.login(SMTP_EMAIL, SMTP_PASSWORD)
+        
+        # Send the email to all admins
+        text = msg.as_string()
+        server.sendmail(SMTP_EMAIL, admin_emails, text)
+        
+        server.quit()
+        print(f"✅ Alert correctly sent to {len(admin_emails)} administrators.")
+        
+    except Exception as e:
+        print(f"❌ Error sending email via Gmail: {e}")
+
+
+def send_access_denied_alert(log_entry):
+    """ Sends an email to ALL administrators in case of a Hard Rule violation. """
+    # Obtain admin emails from the database
+    admin_emails = get_admin_emails()
+    
+    if not admin_emails:
+        print("ALERT: denied access detected but NO ADMINS found in database.")
         return
 
-    # --- REAL EMAIL SENDING ---
+    subject = f"UNAUTHORIZED ACCESS ALERT"
+    
+    # HTML Body
+    body_html = f"""
+        <html>
+        <body>
+            <h2 style="color:red;">Unauthorized Access Detected</h2>
+            <p>A potentially dangerous unauthorized access was recorded:</p>
+            <ul>
+                <li><strong>User ID:</strong> {log_entry.get('user_id')}</li>
+                <li><strong>Role:</strong> {log_entry.get('role')}</li>
+                <li><strong>Area:</strong> {log_entry.get('area')}</li>
+                <li><strong>Access Time:</strong> {log_entry.get('access_time')}</li>
+                <li><strong>Reason:</strong> {log_entry.get('reason', 'AI Detected Anomaly')}</li>
+            </ul>
+            <p><strong>Action Required:</strong> Please review this incident promptly.</p>
+        </body>
+        </html>
+    """
+
+    # --- EMAIL SENDING ---
     try:
-        # Configurar el missatge
         msg = MIMEMultipart()
         msg['From'] = SMTP_EMAIL
         msg['Subject'] = subject

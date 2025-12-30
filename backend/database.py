@@ -33,7 +33,7 @@ def init_roles_table():
     cur.close()
     conn.close()
 
-def init_db():
+def init_users_table():
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute('''
@@ -66,6 +66,87 @@ def init_logs_table():
             reason TEXT NOT NULL,
             risk_score FLOAT DEFAULT 0.0
         )
+    ''')
+    conn.commit()
+    cur.close()
+    conn.close()
+
+# Table to define access rules per role
+def init_access_rules_table():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('''
+        CREATE TABLE access_rules (
+            id SERIAL PRIMARY KEY,
+            role VARCHAR(50) NOT NULL,
+            allowed_area VARCHAR(100) NOT NULL
+        );
+    ''')
+    conn.commit()
+    cur.close()
+    conn.close()
+
+# Initial access rules insertion
+def insert_initial_access_rules():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    # Example rules
+    cur.execute('''
+        INSERT INTO access_rules (role, allowed_area) VALUES 
+        ('Student', 'Classroom_1'),
+        ('Student', 'Library'),
+        ('Student', 'Lab_A'),
+        ('Professor', 'Classroom_1'),
+        ('Professor', 'Library'),
+        ('Professor', 'Lab_A'),
+        ('Professor', 'Office_1'),
+        ('Staff', 'Office_1'),
+        ('Staff', 'Server_Room'),
+        ('Staff', 'Lab_A'),
+        ('Admin', 'ALL');
+    ''')
+    conn.commit()
+    cur.close()
+    conn.close()
+
+#Global configurations table
+def init_system_config_table():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS system_config (
+            key_name VARCHAR(50) PRIMARY KEY,
+            value_data VARCHAR(255)
+        );
+    ''')
+    conn.commit()
+    cur.close()
+    conn.close()
+
+# Insert default configurations
+def insert_default_system_config():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    #
+    cur.execute('''
+        INSERT INTO system_config (key_name, value_data) VALUES 
+        ('closed_hours', '23,0,1,2,3,4,5,6');
+    ''')
+    conn.commit()
+    cur.close()
+    conn.close()
+
+def init_alert_rules_table():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('''
+        CREATE TABLE alert_rules (
+        id SERIAL PRIMARY KEY,
+        event_type VARCHAR(50) NOT NULL, -- Ex: 'AREA_VIOLATION', 'TIME_VIOLATION', 'EXPIRED'
+        role_filter VARCHAR(50) NOT NULL DEFAULT 'ALL',
+        area_filter VARCHAR(100) NOT NULL DEFAULT 'ALL',
+        is_active BOOLEAN DEFAULT TRUE
+    );
     ''')
     conn.commit()
     cur.close()
@@ -223,7 +304,7 @@ if __name__ == "__main__":
     
     #Tables creation
     # init_roles_table()
-    # init_db()
+    # init_users_table()
     # init_logs_table()
     # print("Database initialized.")
 
