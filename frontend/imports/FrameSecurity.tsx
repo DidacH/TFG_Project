@@ -43,7 +43,7 @@ interface SecurityData {
 interface ActionButtonProps {
     onClick: (e?: React.MouseEvent<HTMLButtonElement>) => void;
     children: React.ReactNode;
-    variant?: 'primary' | 'secondary' | 'danger'; // Added 'danger' variant
+    variant?: 'primary' | 'secondary'
     isLoading?: boolean;
     className?: string;
     icon?: React.ElementType;
@@ -54,7 +54,6 @@ function ActionButton({ onClick, children, variant = 'primary', isLoading = fals
     const variantClasses = {
         primary: "bg-[#c8102e] hover:bg-[#b00f29] active:bg-[#a00d25] text-white shadow-lg hover:shadow-xl",
         secondary: "bg-[#eeeeee] hover:bg-[#e0e0e0] active:bg-[#d5d5d5] text-black shadow-md hover:shadow-lg",
-        danger: "bg-red-800 hover:bg-red-900 text-white shadow-md"
     };
     return (
         <button 
@@ -83,6 +82,7 @@ export default function FrameSecurity() {
   const [data, setData] = useState<SecurityData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadingDots, setLoadingDots] = useState("");
 
   // Helper to get severity color
   const getSeverityColor = (severity: string) => {
@@ -91,6 +91,24 @@ export default function FrameSecurity() {
       case 'medium': return 'text-orange-600 bg-orange-50 border-orange-200';
       case 'low': return 'text-blue-600 bg-blue-50 border-blue-200';
       default: return 'text-gray-600 bg-gray-50 border-gray-200';
+    }
+  };
+
+  // Helper to get system health text color
+  const getHealthColor = (health?: string) => {
+    switch (health?.toLowerCase()) {
+      case 'critical': return 'text-red-600';
+      case 'warning': return 'text-orange-500';
+      default: return 'text-green-600'; // Good
+    }
+  };
+
+  // Helper to get system health background/icon color
+  const getHealthBg = (health?: string) => {
+    switch (health?.toLowerCase()) {
+      case 'critical': return 'bg-red-100 text-red-600';
+      case 'warning': return 'bg-orange-100 text-orange-600';
+      default: return 'bg-green-100 text-green-600';
     }
   };
 
@@ -123,20 +141,8 @@ export default function FrameSecurity() {
         const json: SecurityData = await response.json();
         setData(json);
     } catch (err: any) {
-        // Fallback mock data for development if API fails (Optional: Remove in production)
-        // This helps you test the UI without the backend ready
-        console.warn("Using mock data due to error:", err.message);
-        setData({
-            admin_name: "Admin User",
-            stats: { active_threats: 2, blocked_ips_24h: 15, system_health: "Good" },
-            recent_incidents: [
-                { id: "1", severity: "high", type: "Multiple Failed Logins", source_ip: "192.168.1.55", timestamp: "2023-10-27 10:30", status: "pending" },
-                { id: "2", severity: "medium", type: "Unauthorized Access Area", source_ip: "10.0.0.5", timestamp: "2023-10-26 14:20", status: "resolved" },
-                { id: "3", severity: "low", type: "Password Reset Request", source_ip: "192.168.1.12", timestamp: "2023-10-25 09:15", status: "resolved" }
-            ]
-        });
-        // Uncomment the line below to show real error screen instead of mock data
-        // setError(err.message); 
+        console.error("Error real:", err);
+        setError(err.message); 
         setLoading(false);
     } finally {
         setLoading(false);
@@ -146,6 +152,16 @@ export default function FrameSecurity() {
   useEffect(() => {
     fetchSecurityData();
   }, [fetchSecurityData]);
+
+  useEffect(() => {
+    if (!loading) return;
+
+    const interval = setInterval(() => {
+        setLoadingDots((prev) => (prev.length >= 3 ? "" : prev + "."));
+    }, 400);
+
+    return () => clearInterval(interval);
+  }, [loading]);
 
 
   if (error && !data) {
@@ -192,107 +208,130 @@ export default function FrameSecurity() {
 
             {/* Main Content Area */}
             <div className="flex-grow w-full flex flex-col gap-10 px-4 sm:px-6 lg:px-10 pb-12 pt-8 md:pt-12">
-                <div className="w-full px-4 sm:px-6 lg:px-10">
 
-                    <div className="w-full mb-10">
-                         <SectionTitle>Security Overview</SectionTitle>
-                    </div>
-
-                    {/* Status Cards Row */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-                        {/* Card 1 */}
-                        <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm flex items-center justify-between">
-                            <div>
-                                <p className="text-gray-500 text-sm font-medium">Active Threats</p>
-                                <p className="text-3xl font-bold text-red-600 mt-1">{data?.stats.active_threats}</p>
-                            </div>
-                            <div className="h-12 w-12 bg-red-100 rounded-full flex items-center justify-center">
-                                <ShieldAlert className="h-6 w-6 text-red-600" />
-                            </div>
-                        </div>
-                        {/* Card 2 */}
-                        <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm flex items-center justify-between">
-                            <div>
-                                <p className="text-gray-500 text-sm font-medium">Blocked IPs (24h)</p>
-                                <p className="text-3xl font-bold text-gray-800 mt-1">{data?.stats.blocked_ips_24h}</p>
-                            </div>
-                            <div className="h-12 w-12 bg-gray-100 rounded-full flex items-center justify-center">
-                                <BanIcon className="h-6 w-6 text-gray-600" />
-                            </div>
-                        </div>
-                        {/* Card 3 */}
-                        <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm flex items-center justify-between">
-                            <div>
-                                <p className="text-gray-500 text-sm font-medium">System Health</p>
-                                <p className="text-3xl font-bold text-green-600 mt-1">{data?.stats.system_health}</p>
-                            </div>
-                            <div className="h-12 w-12 bg-green-100 rounded-full flex items-center justify-center">
-                                <Activity className="h-6 w-6 text-green-600" />
-                            </div>
+                {/* CONDITIONAL: If loading show spinner, else show content */}
+                {loading ? (
+                    <div className="flex flex-col items-center justify-center h-[75vh] w-full">
+                        <div className="relative">
+                            <p className="text-gray-500 font-medium">
+                                Fetching security data
+                            </p>
+                            
+                            <span className="absolute left-full top-0 text-gray-500 font-medium">
+                                {loadingDots}
+                            </span>
                         </div>
                     </div>
+                ) : (    
+                    <div className="w-full px-4 sm:px-6 lg:px-10">
 
-                    {/* Recent Incidents Table/List */}
-                    <div className="w-full mb-12">
-                        <h3 className="text-xl md:text-2xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                            Recent Incidents
-                        </h3>
-                        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                            {data?.recent_incidents && data.recent_incidents.length > 0 ? (
-                                <div className="divide-y divide-gray-100">
-                                    {data.recent_incidents.map((incident) => (
-                                        <div key={incident.id} className="p-4 md:p-5 flex flex-col md:flex-row md:items-center justify-between hover:bg-gray-50 transition-colors">
-                                            <div className="flex flex-col gap-1 mb-3 md:mb-0">
-                                                <div className="flex items-center gap-3">
-                                                    <span className={cn("px-2 py-1 rounded-md text-xs font-bold uppercase border", getSeverityColor(incident.severity))}>
-                                                        {incident.severity}
-                                                    </span>
-                                                    <span className="font-medium text-gray-900">{incident.type}</span>
-                                                </div>
-                                                <div className="text-sm text-gray-500 flex gap-4 mt-1">
-                                                    <span>IP: {incident.source_ip}</span>
-                                                    <span>•</span>
-                                                    <span>{incident.timestamp}</span>
-                                                </div>
-                                            </div>
-                                            
-                                            <div className="flex items-center gap-3">
-                                                 {incident.status === 'resolved' ? (
-                                                    <div className="flex items-center text-green-600 text-sm font-medium">
-                                                        <ShieldCheck className="h-4 w-4 mr-1" /> Resolved
-                                                    </div>
-                                                 ) : (
-                                                    <button className="text-sm bg-white border border-gray-300 text-gray-700 px-3 py-1.5 rounded-md hover:bg-gray-50 font-medium">
-                                                        Review
-                                                    </button>
-                                                 )}
-                                            </div>
-                                        </div>
-                                    ))}
+                        <div className="w-full mb-10">
+                            <SectionTitle>Security Overview</SectionTitle>
+                        </div>
+
+                        {/* Status Cards Row */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+                            {/* Card 1 */}
+                            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm flex items-center justify-between">
+                                <div>
+                                    <p className="text-gray-500 text-sm font-medium">Active Threats</p>
+                                    <p className="text-3xl font-bold text-red-600 mt-1">{data?.stats.active_threats}</p>
                                 </div>
-                            ) : (
-                                <div className="p-8 text-center text-gray-500">No security incidents found.</div>
-                            )}
+                                <div className="h-12 w-12 bg-red-100 rounded-full flex items-center justify-center">
+                                    <ShieldAlert className="h-6 w-6 text-red-600" />
+                                </div>
+                            </div>
+                            {/* Card 2 */}
+                            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm flex items-center justify-between">
+                                <div>
+                                    <p className="text-gray-500 text-sm font-medium">Blocked IPs (24h)</p>
+                                    <p className="text-3xl font-bold text-gray-800 mt-1">{data?.stats.blocked_ips_24h}</p>
+                                </div>
+                                <div className="h-12 w-12 bg-gray-100 rounded-full flex items-center justify-center">
+                                    <BanIcon className="h-6 w-6 text-gray-600" />
+                                </div>
+                            </div>
+                            {/* Card 3 */}
+                            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm flex items-center justify-between">
+                                <div>
+                                    <p className="text-gray-500 text-sm font-medium">System Health</p>
+                                    <p className={cn("text-3xl font-bold mt-1", getHealthColor(data?.stats.system_health))}>
+                                        {data?.stats.system_health}
+                                    </p>
+                                </div>
+                                <div className={cn("h-12 w-12 rounded-full flex items-center justify-center transition-colors", getHealthBg(data?.stats.system_health))}>
+                                    {/* Canviem la icona segons l'estat si vols, o deixem Activity per defecte */}
+                                    {data?.stats.system_health === 'Critical' ? (
+                                        <AlertTriangle className="h-6 w-6" />
+                                    ) : (
+                                        <Activity className="h-6 w-6" />
+                                    )}
+                                </div>
+                            </div>
                         </div>
-                    </div>
 
-                    {/* Quick Actions */}
-                    <div className="w-full">
-                        <h3 className="text-xl md:text-2xl font-semibold text-gray-800 mb-4">Security Actions</h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                            <ActionButton onClick={() => console.log('Audit Logs')} variant="secondary" icon={Search}>
-                                Audit Logs
-                            </ActionButton>
-                            <ActionButton onClick={() => console.log('Rules')} variant="secondary" icon={Lock}>
-                                Firewall Rules
-                            </ActionButton>
-                            <ActionButton onClick={() => console.log('Lockdown')} variant="danger" icon={ShieldAlert}>
-                                System Lockdown
-                            </ActionButton>
+                        {/* Recent Incidents Table/List */}
+                        <div className="w-full mb-12">
+                            <h3 className="text-xl md:text-2xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                                Recent Incidents
+                            </h3>
+                            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                                {data?.recent_incidents && data.recent_incidents.length > 0 ? (
+                                    <div className="divide-y divide-gray-100">
+                                        {data.recent_incidents.map((incident) => (
+                                            <div key={incident.id} className="p-4 md:p-5 flex flex-col md:flex-row md:items-center justify-between hover:bg-gray-50 transition-colors">
+                                                <div className="flex flex-col gap-1 mb-3 md:mb-0">
+                                                    <div className="flex items-center gap-3">
+                                                        <span className={cn("px-2 py-1 rounded-md text-xs font-bold uppercase border", getSeverityColor(incident.severity))}>
+                                                            {incident.severity}
+                                                        </span>
+                                                        <span className="font-medium text-gray-900">{incident.type}</span>
+                                                    </div>
+                                                    <div className="text-sm text-gray-500 flex gap-4 mt-1">
+                                                        <span>IP: {incident.source_ip}</span>
+                                                        <span>•</span>
+                                                        <span>{incident.timestamp}</span>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="flex items-center gap-3">
+                                                    {incident.status === 'resolved' ? (
+                                                        <div className="flex items-center text-green-600 text-sm font-medium">
+                                                            <ShieldCheck className="h-4 w-4 mr-1" /> Resolved
+                                                        </div>
+                                                    ) : (
+                                                        <button className="text-sm bg-white border border-gray-300 text-gray-700 px-3 py-1.5 rounded-md hover:bg-gray-50 font-medium">
+                                                            Review
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="p-8 text-center text-gray-500">No security incidents found.</div>
+                                )}
+                            </div>
                         </div>
-                    </div>
 
-                </div>
+                        {/* Quick Actions */}
+                        <div className="w-full">
+                            <h3 className="text-xl md:text-2xl font-semibold text-gray-800 mb-4">Security Actions</h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                                <ActionButton onClick={() => console.log('Audit Logs')} variant="secondary" icon={Search}>
+                                    Audit Logs
+                                </ActionButton>
+                                <ActionButton onClick={() => console.log('Rules')} variant="secondary" icon={Lock}>
+                                    Firewall Rules
+                                </ActionButton>
+                                <ActionButton onClick={() => console.log('Lockdown')} variant="primary" icon={ShieldAlert}>
+                                    System Lockdown
+                                </ActionButton>
+                            </div>
+                        </div>
+
+                    </div>
+                )}
             </div>
         </div>
   );

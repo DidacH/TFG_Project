@@ -480,14 +480,14 @@ def security_dashboard():
     """Renders main security page."""
     return render_template('security.html')
 
-#Endpoint to get suspicious logs
+
+# --- SECURITY ENDPOINTS ---
+
 @app.route('/api/admin/logs/suspicious')
 def get_suspicious_logs():
-    """Returns accepted logs but with a low score below the threshold (suspicious)."""
     threshold = float(os.getenv('ANOMALY_THRESHOLD', -0.15))
     conn = get_db_connection()
     cur = conn.cursor()
-    # Query: Allowed entries with risk_score below threshold
     cur.execute("""
         SELECT id, user_id, role, area, access_time, risk_score, reason 
         FROM logs 
@@ -498,15 +498,12 @@ def get_suspicious_logs():
     cur.close()
     conn.close()
     
-    # Convert to dicts for JSON response
     data = [{'id': r[0], 'user': r[1], 'role': r[2], 'area': r[3], 
              'time': str(r[4]), 'score': r[5], 'reason': r[6]} for r in logs]
     return jsonify(data)
 
-#Endpoint to get denied logs
 @app.route('/api/admin/logs/denied')
 def get_denied_logs():
-    """Returns DENIED logs (Hard Rules)."""
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
@@ -523,10 +520,8 @@ def get_denied_logs():
              'time': str(r[4]), 'reason': r[5]} for r in logs]
     return jsonify(data)
 
-# Endpoint to manage access rules
 @app.route('/api/admin/rules/access', methods=['GET', 'POST', 'DELETE'])
 def manage_access_rules():
-    """Manage access rules (Who can access where)."""
     conn = get_db_connection()
     cur = conn.cursor()
     
@@ -552,10 +547,8 @@ def manage_access_rules():
         conn.close()
         return jsonify({'status': 'deleted'})
 
-# Endpoint to manage alert rules
 @app.route('/api/admin/rules/alerts', methods=['GET', 'POST', 'DELETE'])
 def manage_alert_rules():
-    """Manage alert rules (When to send email)."""
     conn = get_db_connection()
     cur = conn.cursor()
     
@@ -581,7 +574,19 @@ def manage_alert_rules():
         conn.close()
         return jsonify({'status': 'deleted'})
     
-# Endpoint for Security Dashboard Data
+
+# Risk Score Map
+RISK_SCORES = {
+    'FORGED_QR': 10,     # Hack attempt / Security breach
+    'MALFORMED_QR': 10,  # Fuzzing / Hack attempt
+    'UNKNOWN_USER': 5,   # Potential brute force or deleted user access
+    'AREA_VIOLATION': 3, # Unauthorized internal access (Policy)
+    'TIME_VIOLATION': 1, # Process issue
+    'EXPIRED_QR': 1,     # Usability issue
+    'UNKNOWN': 1
+}
+    
+# Main Security Dashboard Data Endpoint
 @app.route('/api/admin/security-data', methods=['GET'])
 @token_required
 @admin_required
@@ -590,48 +595,77 @@ def api_security_dashboard_data(user_id, role):
         conn = get_db_connection()
         cur = conn.cursor()
 
+        # Admin Info
         cur.execute('SELECT name FROM users WHERE id = %s', (user_id,))
         user_row = cur.fetchone()
         admin_name = user_row['name'] if user_row else "Admin"
 
-        # Blockings during last 24h
-        yesterday = datetime.now() - timedelta(days=1)
-        cur.execute("""
-            SELECT COUNT(*) as blocked 
-            FROM logs 
-            WHERE entry_allowed = FALSE AND access_time >= %s
-        """, (yesterday,))
-        blocked_24h = cur.fetchone()['blocked']
+        # Time Threshold (24h)
+        yesterday_obj = datetime.now() - timedelta(days=1)
+        yesterday_str = yesterday_obj.strftime("%Y-%m-%d %H:%M:%S")
 
-        # Active threats (Unique users denied access in last 24h)
-        cur.execute("""
-            SELECT count(distinct user_id) as threats 
-            FROM logs 
-            WHERE entry_allowed = FALSE AND access_time >= %s
-        """, (yesterday,))
-        active_threats = cur.fetchone()['threats']
+        # Basic Counters
+        cur.execute("SELECT COUNT(*) as blocked FROM logs WHERE entry_allowed = 0 AND access_time >= %s", (yesterday_str,))
+        row = cur.fetchone()
+        blocked_24h = row['blocked'] if row else 0
 
-        # Obtain recent incidents (denied accesses)
+        cur.execute("SELECT count(distinct user_id) as threats FROM logs WHERE entry_allowed = 0 AND access_time >= %s", (yesterday_str,))
+        row_threats = cur.fetchone()
+        active_threats = row_threats['threats'] if row_threats else 0
+
+        # FETCH RECENT INCIDENTS & CALCULATE RISK SCORE
         cur.execute("""
-            SELECT id, user_id, role, area, access_time, entry_allowed, reason 
+            SELECT id, user_id, role, area, access_time, entry_allowed, reason, error_code 
             FROM logs 
-            WHERE entry_allowed = FALSE 
-            ORDER BY access_time DESC LIMIT 10
+            WHERE entry_allowed = 0 
+            ORDER BY access_time DESC LIMIT 50
         """)
         raw_incidents = cur.fetchall()
         
+        total_risk_score = 0
         recent_incidents = []
-        for log in raw_incidents:
-            severity = 'high' if 'Ban' in log['reason'] or 'Security' in log['reason'] else 'medium'
+        
+        for i, log in enumerate(raw_incidents):
+            log_dict = dict(log)
+            reason_text = log_dict.get('reason', '') or ''
             
-            recent_incidents.append({
-                'id': str(log['id']),
-                'severity': severity,
-                'type': log['reason'] or 'Access Denied',
-                'source_ip': log['user_id'], # We use user_id as source identifier
-                'timestamp': str(log['access_time']),
-                'status': 'pending' # Default status
-            })
+            # Get Error Code directly from DB
+            error_code = log_dict.get('error_code') or 'UNKNOWN'
+            
+            # Calculate score directly from the map
+            score = RISK_SCORES.get(error_code, 1)
+            
+            # Add to total risk score if within last 24h
+            log_time_str = str(log_dict.get('access_time', ''))
+            try:
+                if log_time_str >= yesterday_str:
+                    total_risk_score += score
+            except:
+                pass 
+
+            # Determine Visual Severity
+            severity = 'low'
+            if score >= 10: severity = 'high'
+            elif score >= 3: severity = 'medium'
+
+            if len(recent_incidents) < 10:
+                recent_incidents.append({
+                    'id': str(log_dict.get('id', i)),
+                    'severity': severity,
+                    'type': error_code, # Display the clean Error Code
+                    'description': reason_text,
+                    'source_ip': log_dict.get('user_id', 'Unknown'), 
+                    'timestamp': log_time_str,
+                    'status': 'pending' 
+                })
+
+        # Determine System Health
+        if total_risk_score == 0:
+            system_health = 'Good'
+        elif total_risk_score < 25: 
+            system_health = 'Warning'
+        else:
+            system_health = 'Critical'
 
         cur.close()
         conn.close()
@@ -641,7 +675,8 @@ def api_security_dashboard_data(user_id, role):
             'stats': {
                 'active_threats': active_threats,
                 'blocked_ips_24h': blocked_24h,
-                'system_health': 'Good'
+                'system_health': system_health,
+                'risk_score': total_risk_score
             },
             'recent_incidents': recent_incidents
         }

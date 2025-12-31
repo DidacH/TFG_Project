@@ -130,8 +130,8 @@ def process_access_log_async(qr_data, target_area):
         cur = conn.cursor()
         
         cur.execute('''
-            INSERT INTO logs (user_id, role, area, access_time, entry_allowed, reason, risk_score)
-            VALUES (COALESCE(%s, 'unknown'), COALESCE(%s, 'unknown'), %s, %s, %s, %s, %s)
+            INSERT INTO logs (user_id, role, area, access_time, entry_allowed, reason, risk_score, error_code)
+            VALUES (COALESCE(%s, 'unknown'), COALESCE(%s, 'unknown'), %s, %s, %s, %s, %s, %s)
         ''', (
             qr_data['user_id'],
             qr_data['role'],
@@ -139,7 +139,8 @@ def process_access_log_async(qr_data, target_area):
             qr_data['access_time'],
             int(qr_data['valid']),
             qr_data['reason'],
-            float(risk_score) # Store risk score
+            float(risk_score), # Store risk score
+            qr_data['error_code']
         ))
         conn.commit()
         cur.close()

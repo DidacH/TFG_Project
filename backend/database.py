@@ -64,6 +64,7 @@ def init_logs_table():
             access_time TEXT NOT NULL,
             entry_allowed INTEGER NOT NULL,
             reason TEXT NOT NULL,
+            error_code TEXT,
             risk_score FLOAT DEFAULT 0.0
         )
     ''')
@@ -309,8 +310,8 @@ if __name__ == "__main__":
     # print("Database initialized.")
 
     # print(select_logs())
-    print(select_logs())
-    print(select_users())
-    print(select_roles())
+    # print(select_logs())
+    # print(select_users())
+    # print(select_roles())
 
     get_all_table_names()
