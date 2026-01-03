@@ -585,6 +585,8 @@ RISK_SCORES = {
     'EXPIRED_QR': 1,     # Usability issue
     'UNKNOWN': 1
 }
+
+CRITICAL_THRESHOLD = 10
     
 # Main Security Dashboard Data Endpoint
 @app.route('/api/admin/security-data', methods=['GET'])
@@ -595,74 +597,101 @@ def api_security_dashboard_data(user_id, role):
         conn = get_db_connection()
         cur = conn.cursor()
 
-        # Admin Info
+        # 1. Admin Info
         cur.execute('SELECT name FROM users WHERE id = %s', (user_id,))
         user_row = cur.fetchone()
         admin_name = user_row['name'] if user_row else "Admin"
 
-        # Time Threshold (24h)
+        # 2. Time Threshold (24h)
         yesterday_obj = datetime.now() - timedelta(days=1)
         yesterday_str = yesterday_obj.strftime("%Y-%m-%d %H:%M:%S")
 
-        # Basic Counters
+        # 3. Blocked Counters (Raw count)
         cur.execute("SELECT COUNT(*) as blocked FROM logs WHERE entry_allowed = 0 AND access_time >= %s", (yesterday_str,))
         row = cur.fetchone()
         blocked_24h = row['blocked'] if row else 0
 
-        cur.execute("SELECT count(distinct user_id) as threats FROM logs WHERE entry_allowed = 0 AND access_time >= %s", (yesterday_str,))
-        row_threats = cur.fetchone()
-        active_threats = row_threats['threats'] if row_threats else 0
-
-        # FETCH RECENT INCIDENTS & CALCULATE RISK SCORE
+        # --- SMART LOGIC STARTS HERE ---
+        
+        # 4. Fetch ALL raw incidents from last 24h to analyze patterns
+        # We need everything to count repetitions per user
         cur.execute("""
             SELECT id, user_id, role, area, access_time, entry_allowed, reason, error_code 
             FROM logs 
-            WHERE entry_allowed = 0 
-            ORDER BY access_time DESC LIMIT 50
-        """)
-        raw_incidents = cur.fetchall()
+            WHERE entry_allowed = 0 AND access_time >= %s
+            ORDER BY access_time DESC
+        """, (yesterday_str,))
         
+        all_logs = cur.fetchall()
+        
+        # A. Analyze Repetitions (Count how many failures per user)
+        user_failure_counts = {}
+        for log in all_logs:
+            # Handle row/dict access
+            u_id = log['user_id'] if isinstance(log, dict) or hasattr(log, 'keys') else log[1]
+            if u_id not in user_failure_counts:
+                user_failure_counts[u_id] = 0
+            user_failure_counts[u_id] += 1
+
+        # B. Process Logs & Calculate Metrics
         total_risk_score = 0
+        active_threats_set = set() # To store unique "real" threats
         recent_incidents = []
         
-        for i, log in enumerate(raw_incidents):
+        # Configurable Threshold: How many low-severity errors constitute a threat?
+        REPETITION_THRESHOLD = 3 
+
+        for i, log in enumerate(all_logs):
             log_dict = dict(log)
             reason_text = log_dict.get('reason', '') or ''
-            
-            # Get Error Code directly from DB
             error_code = log_dict.get('error_code') or 'UNKNOWN'
+            u_id = log_dict.get('user_id', 'Unknown')
             
-            # Calculate score directly from the map
+            # 1. Base Score
             score = RISK_SCORES.get(error_code, 1)
             
-            # Add to total risk score if within last 24h
-            log_time_str = str(log_dict.get('access_time', ''))
-            try:
-                if log_time_str >= yesterday_str:
-                    total_risk_score += score
-            except:
-                pass 
-
-            # Determine Visual Severity
+            # 2. Determine Severity
             severity = 'low'
             if score >= 10: severity = 'high'
             elif score >= 3: severity = 'medium'
-
+            
+            # 3. SMART STATUS: Auto-resolve vs Pending
+            # Rule: If High Severity OR (Low Severity BUT Repeated > 3 times) -> Pending
+            # Otherwise -> Auto-resolved
+            is_repeated = user_failure_counts.get(u_id, 0) >= REPETITION_THRESHOLD
+            
+            if severity == 'high' or severity == 'medium' or is_repeated:
+                status = 'pending'
+                # Add to Active Threats Count because it's significant
+                active_threats_set.add(u_id)
+                # Add score to system health
+                total_risk_score += score
+            else:
+                status = 'resolved' # Auto-resolved (Noise)
+                # We do NOT add to total_risk_score or active_threats to keep dashboard "Green" if it's just noise
+            
+            # 4. Add to list (Limit to 10 for display)
             if len(recent_incidents) < 10:
+                # Opcional: Afegir indicador visual si és per repetició
+                display_type = reason_text
+                if is_repeated and severity == 'low':
+                    display_type = f"{reason_text} (Repeated {user_failure_counts.get(u_id)}x)"
+
                 recent_incidents.append({
                     'id': str(log_dict.get('id', i)),
                     'severity': severity,
-                    'type': error_code, # Display the clean Error Code
-                    'description': reason_text,
-                    'source_ip': log_dict.get('user_id', 'Unknown'), 
-                    'timestamp': log_time_str,
-                    'status': 'pending' 
+                    'type': display_type, 
+                    'description': error_code,
+                    'source_id': u_id, 
+                    'timestamp': str(log_dict.get('access_time', '')),
+                    'status': status 
                 })
 
-        # Determine System Health
+        # 5. System Health
+        # Now reflects only "Real" threats, not noise
         if total_risk_score == 0:
             system_health = 'Good'
-        elif total_risk_score < 25: 
+        elif total_risk_score < CRITICAL_THRESHOLD: 
             system_health = 'Warning'
         else:
             system_health = 'Critical'
@@ -673,8 +702,8 @@ def api_security_dashboard_data(user_id, role):
         response_data = {
             'admin_name': admin_name,
             'stats': {
-                'active_threats': active_threats,
-                'blocked_ips_24h': blocked_24h,
+                'active_threats': len(active_threats_set), # Only "Real" threats
+                'blocked_attempts_24h': blocked_24h, # Raw count (shows total activity)
                 'system_health': system_health,
                 'risk_score': total_risk_score
             },

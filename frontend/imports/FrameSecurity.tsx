@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { 
   Loader2, 
@@ -9,7 +9,9 @@ import {
   Lock, 
   AlertTriangle, 
   Activity,
-  Search
+  Search,
+  CheckCircle,
+  CheckCircle2
 } from "lucide-react";
 import { cn } from "../components/ui/utils";
 
@@ -21,14 +23,15 @@ interface SecurityIncident {
   id: string;
   severity: 'high' | 'medium' | 'low';
   type: string;
-  source_ip: string;
+  source_id: string;
   timestamp: string;
+  description: string;
   status: 'resolved' | 'pending';
 }
 
 interface SecurityStats {
   active_threats: number;
-  blocked_ips_24h: number;
+  blocked_attempts_24h: number;
   system_health: string;
 }
 
@@ -38,7 +41,7 @@ interface SecurityData {
   recent_incidents: SecurityIncident[];
 }
 
-// --- Helper Components (Reused from FrameAdmin) ---
+// --- Helper Components ---
 
 interface ActionButtonProps {
     onClick: (e?: React.MouseEvent<HTMLButtonElement>) => void;
@@ -73,6 +76,127 @@ function ActionButton({ onClick, children, variant = 'primary', isLoading = fals
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
     return <h2 className="text-2xl md:text-3xl font-semibold text-black text-left">{children}</h2>;
+}
+
+interface SecurityActionToggleProps {
+    status: 'resolved' | 'pending';
+    onClick: () => void;
+}
+
+function SecurityActionToggle({ status, onClick }: SecurityActionToggleProps) {
+    const [showTooltip, setShowTooltip] = useState(false);
+    const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+    const isThreat = status === 'pending';
+
+    const handleMouseEnter = () => {
+        // Clear any existing timer just in case
+        if (timerRef.current) clearTimeout(timerRef.current);
+        // Delay 600ms before showing
+        timerRef.current = setTimeout(() => setShowTooltip(true), 600);
+    };
+
+    const handleMouseLeave = () => {
+        // Clear timer immediately to prevent showing if user left quickly
+        if (timerRef.current) clearTimeout(timerRef.current);
+        setShowTooltip(false);
+    };
+
+    // Cleanup on unmount to prevent memory leaks or state updates on unmounted component
+    useEffect(() => {
+        return () => {
+            if (timerRef.current) clearTimeout(timerRef.current);
+        };
+    }, []);
+
+    return (
+        <div className="relative flex items-center">
+            <button
+                onClick={onClick}
+                onMouseEnter={handleMouseEnter}
+                onMouseLeave={handleMouseLeave}
+                className={cn(
+                    "p-2 rounded-full transition-all duration-200 border shadow-sm",
+                    isThreat 
+                        ? "bg-green-50 border-green-200 text-green-600 hover:bg-green-100 hover:scale-105" // Opció per marcar com segur
+                        : "bg-gray-50 border-gray-200 text-gray-400 hover:bg-red-50 hover:text-red-600 hover:border-red-200 hover:scale-105" // Opció per marcar com amenaça
+                )}
+            >
+                {isThreat ? (
+                    <ShieldCheck className="w-5 h-5" /> // Safe Icon
+                ) : (
+                    <ShieldAlert className="w-5 h-5" /> // Danger Icon
+                )}
+            </button>
+
+            {/* Animated tooltip */}
+            {showTooltip && (
+                <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 w-48 bg-gray-800 text-white text-xs rounded-md py-1.5 px-3 z-50 animate-in fade-in zoom-in-95 duration-200 shadow-xl">
+                    <div className="absolute right-[-4px] top-1/2 -translate-y-1/2 w-2 h-2 bg-gray-800 rotate-45"></div>
+                    <p className="font-medium relative z-10 text-center">
+                        {isThreat 
+                            ? "Mark as False Positive (Safe)" 
+                            : "Escalate to Active Threat"}
+                    </p>
+                </div>
+            )}
+        </div>
+    );
+}
+
+interface ReviewButtonProps {
+    status: 'resolved' | 'pending';
+    onClick: () => void;
+}
+
+function ReviewButton({ status, onClick }: ReviewButtonProps) {
+    const [showTooltip, setShowTooltip] = useState(false);
+    const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+    const isPending = status === 'pending';
+
+    const handleMouseEnter = () => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => setShowTooltip(true), 600);
+    };
+    
+    const handleMouseLeave = () => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+        setShowTooltip(false);
+    };
+
+    useEffect(() => {
+        return () => {
+            if (timerRef.current) clearTimeout(timerRef.current);
+        };
+    }, []);
+
+    return (
+        <div className="relative flex items-center">
+            <button
+                onClick={onClick}
+                onMouseEnter={handleMouseEnter}
+                onMouseLeave={handleMouseLeave}
+                className={cn(
+                    "p-2 rounded-full transition-all duration-200 border shadow-sm",
+                    isPending 
+                        ? "bg-gray-50 border-gray-200 text-gray-400 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 hover:scale-105" // Action: Mark Reviewed
+                        : "bg-blue-50 border-blue-200 text-blue-600 hover:bg-gray-100 hover:text-gray-500 hover:border-gray-300 hover:scale-105" // Action: Un-mark (Pending)
+                )}
+            >
+                {isPending ? <CheckCircle className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
+            </button>
+
+            {showTooltip && (
+                <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 w-48 bg-gray-800 text-white text-xs rounded-md py-1.5 px-3 z-50 animate-in fade-in zoom-in-95 duration-200 shadow-xl">
+                    <div className="absolute right-[-4px] top-1/2 -translate-y-1/2 w-2 h-2 bg-gray-800 rotate-45"></div>
+                    <p className="font-medium relative z-10 text-center">
+                        {isPending ? "Mark as Reviewed" : "Mark as Pending (Unread)"}
+                    </p>
+                </div>
+            )}
+        </div>
+    );
 }
 
 // --- Main Component ---
@@ -163,6 +287,94 @@ export default function FrameSecurity() {
     return () => clearInterval(interval);
   }, [loading]);
 
+  const getRelatedIncidentIds = (targetIncident: SecurityIncident, allIncidents: SecurityIncident[]): string[] => {
+      return allIncidents
+          .filter(inc => 
+              inc.source_id === targetIncident.source_id && // Same User
+              inc.description === targetIncident.description // Same Threat Type (e.g. TIME_VIOLATION)
+          )
+          .map(inc => inc.id);
+  };
+
+  const handleToggleIncident = async (targetIncident: SecurityIncident) => {
+    if (!data) return;
+
+    const currentStatus = targetIncident.status;
+    const newStatus = currentStatus === 'pending' ? 'resolved' : 'pending';
+    const isBatchAction = newStatus === 'resolved' && targetIncident.type.includes("(Repeated");
+    
+    // Identify logs to update
+    let idsToUpdate: string[] = [targetIncident.id];
+
+    if (isBatchAction) {
+        // Mark all similar low-severity pending incidents from the same source as resolved
+        idsToUpdate = data.recent_incidents
+            .filter(inc => 
+                inc.source_id === targetIncident.source_id && // Same user
+                inc.severity === 'low' &&                     // Only low severity
+                inc.status === 'pending' &&                   // Pending status
+                inc.description === targetIncident.description // Same Threat Type
+            )
+            .map(inc => inc.id);
+        
+        // Ensure the current ID is included (just in case)
+        if (!idsToUpdate.includes(targetIncident.id)) idsToUpdate.push(targetIncident.id);
+        
+        console.log(`Batch resolving ${idsToUpdate.length} incidents for user ${targetIncident.source_id}`);
+    }
+
+    // Update the local state optimistically
+    const updatedIncidents = data.recent_incidents.map(inc => 
+        idsToUpdate.includes(inc.id) ? { ...inc, status: newStatus as 'resolved' | 'pending' } : inc
+    );
+
+    // Recalculate active threats (this is a visual approximation)
+    const uniqueThreats = new Set(
+        updatedIncidents
+            .filter(i => i.status === 'pending')
+            .map(i => i.source_id)
+    );
+    
+    setData({
+        ...data,
+        stats: { ...data.stats, active_threats: uniqueThreats.size },
+        recent_incidents: updatedIncidents
+    });
+  };
+
+  const handleBatchStatusToggle = async (targetIncident: SecurityIncident) => {
+    if (!data) return;
+
+    // Determine new status based on current status
+    const newStatus = targetIncident.status === 'pending' ? 'resolved' : 'pending';
+    
+    // Find all IDs that need to be updated (Batch Logic)
+    const idsToUpdate = getRelatedIncidentIds(targetIncident, data.recent_incidents);
+
+    console.log(`Updating ${idsToUpdate.length} incidents to ${newStatus} (Batch: Same User + Same Type)`);
+
+    // Optimistic UI Update
+    const updatedIncidents = data.recent_incidents.map(inc => 
+        idsToUpdate.includes(inc.id) ? { ...inc, status: newStatus as 'resolved' | 'pending' } : inc
+    );
+
+    // Recalculate Active Threats (Visual Approximation)
+    // Counts unique user IDs that still have at least one 'pending' incident
+    const uniqueThreats = new Set(
+        updatedIncidents
+            .filter(i => i.status === 'pending')
+            .map(i => i.source_id)
+    );
+    
+    setData({
+        ...data,
+        stats: { ...data.stats, active_threats: uniqueThreats.size },
+        recent_incidents: updatedIncidents
+    });
+    
+    // NOTE: In a real app, you would send 'idsToUpdate' and 'newStatus' to the backend here.
+  };
+
 
   if (error && !data) {
     return (
@@ -181,7 +393,7 @@ export default function FrameSecurity() {
 
   return (
         <div className="flex flex-col min-h-screen bg-background">
-            {/* Header Section (Consistent with FrameAdmin) */}
+            {/* Header Section */}
             <div className="fixed top-0 left-0 right-0 z-40 bg-background pt-6 md:pt-8">
                 <div className="w-full mx-auto px-4 sm:px-6 lg:px-10">
                     <div className="relative flex justify-center items-center h-12 md:h-14 mb-3">
@@ -244,8 +456,8 @@ export default function FrameSecurity() {
                             {/* Card 2 */}
                             <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm flex items-center justify-between">
                                 <div>
-                                    <p className="text-gray-500 text-sm font-medium">Blocked IPs (24h)</p>
-                                    <p className="text-3xl font-bold text-gray-800 mt-1">{data?.stats.blocked_ips_24h}</p>
+                                    <p className="text-gray-500 text-sm font-medium">Blocked attempts (24h)</p>
+                                    <p className="text-3xl font-bold text-gray-800 mt-1">{data?.stats.blocked_attempts_24h}</p>
                                 </div>
                                 <div className="h-12 w-12 bg-gray-100 rounded-full flex items-center justify-center">
                                     <BanIcon className="h-6 w-6 text-gray-600" />
@@ -270,46 +482,78 @@ export default function FrameSecurity() {
                             </div>
                         </div>
 
-                        {/* Recent Incidents Table/List */}
+                        {/* Recent Incidents Table */}
                         <div className="w-full mb-12">
                             <h3 className="text-xl md:text-2xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                                Recent Incidents
+                                Recent Activity & Alerts
                             </h3>
-                            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                            <div className="bg-white border border-gray-200 rounded-xl overflow-visible shadow-sm">
                                 {data?.recent_incidents && data.recent_incidents.length > 0 ? (
                                     <div className="divide-y divide-gray-100">
                                         {data.recent_incidents.map((incident) => (
-                                            <div key={incident.id} className="p-4 md:p-5 flex flex-col md:flex-row md:items-center justify-between hover:bg-gray-50 transition-colors">
+                                            <div key={incident.id} className={cn(
+                                                "p-4 md:p-5 flex flex-col md:flex-row md:items-center justify-between transition-colors",
+                                                incident.status === 'pending' ? "bg-red-50/30 hover:bg-red-50/60" : "hover:bg-gray-50"
+                                            )}>
                                                 <div className="flex flex-col gap-1 mb-3 md:mb-0">
                                                     <div className="flex items-center gap-3">
+                                                        {/* Severity Badge */}
                                                         <span className={cn("px-2 py-1 rounded-md text-xs font-bold uppercase border", getSeverityColor(incident.severity))}>
                                                             {incident.severity}
                                                         </span>
-                                                        <span className="font-medium text-gray-900">{incident.type}</span>
+                                                        
+                                                        {/* Incident Type Title */}
+                                                        <span className={cn(
+                                                            "font-medium", 
+                                                            incident.status === 'pending' ? "text-red-900" : "text-gray-700"
+                                                        )}>
+                                                            {incident.type}
+                                                        </span>
+                                                        
+                                                        {/* Action Required Label */}
+                                                        {incident.status === 'pending' && (
+                                                            <span className="flex items-center text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full animate-pulse">
+                                                                <AlertTriangle className="w-3 h-3 mr-1" /> Action Required
+                                                            </span>
+                                                        )}
                                                     </div>
-                                                    <div className="text-sm text-gray-500 flex gap-4 mt-1">
-                                                        <span>IP: {incident.source_ip}</span>
-                                                        <span>•</span>
+                                                    <div className="text-sm text-gray-500 flex flex-wrap gap-x-4 gap-y-1 mt-1">
+                                                        <span>User: <span className="font-mono text-gray-700">{incident.source_id}</span></span>
+                                                        <span className="hidden sm:inline">•</span>
                                                         <span>{incident.timestamp}</span>
+                                                        {incident.description !== incident.type && (
+                                                            <>
+                                                                <span className="hidden sm:inline">•</span>
+                                                                <span className="italic text-gray-400">{incident.description}</span>
+                                                            </>
+                                                        )}
                                                     </div>
                                                 </div>
                                                 
-                                                <div className="flex items-center gap-3">
-                                                    {incident.status === 'resolved' ? (
-                                                        <div className="flex items-center text-green-600 text-sm font-medium">
-                                                            <ShieldCheck className="h-4 w-4 mr-1" /> Resolved
-                                                        </div>
-                                                    ) : (
-                                                        <button className="text-sm bg-white border border-gray-300 text-gray-700 px-3 py-1.5 rounded-md hover:bg-gray-50 font-medium">
-                                                            Review
-                                                        </button>
-                                                    )}
+                                                {/* ACTIONS COLUMN */}
+                                                <div className="flex items-center gap-3 pl-0 md:pl-4">
+                                                    
+                                                    {/* Button 1: Mark as Reviewed (Batch Action by Type) */}
+                                                    <ReviewButton 
+                                                        status={incident.status}
+                                                        onClick={() => handleBatchStatusToggle(incident)} 
+                                                    />
+
+                                                    {/* Separator */}
+                                                    <div className="h-6 w-px bg-gray-300"></div>
+
+                                                    {/* Button 2: Toggle Classification Safe/Threat (Batch Action by Type) */}
+                                                    {/* Note: This technically does the same logic as reviewed now, but implies different intent */}
+                                                    <SecurityActionToggle 
+                                                        status={incident.status} 
+                                                        onClick={() => handleBatchStatusToggle(incident)}
+                                                    />
                                                 </div>
                                             </div>
                                         ))}
                                     </div>
                                 ) : (
-                                    <div className="p-8 text-center text-gray-500">No security incidents found.</div>
+                                    <div className="p-8 text-center text-gray-500">No recent incidents found.</div>
                                 )}
                             </div>
                         </div>
@@ -337,7 +581,7 @@ export default function FrameSecurity() {
   );
 }
 
-// Simple Icon component for the card (locally defined to avoid missing imports if not in lucide list provided)
+// Simple Icon component for the card
 function BanIcon({ className }: { className?: string }) {
     return (
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
