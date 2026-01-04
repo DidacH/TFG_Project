@@ -65,7 +65,9 @@ def init_logs_table():
             entry_allowed INTEGER NOT NULL,
             reason TEXT NOT NULL,
             error_code TEXT,
-            risk_score FLOAT DEFAULT 0.0
+            risk_score FLOAT DEFAULT 0.0,
+            is_reviewed BOOLEAN DEFAULT FALSE,
+            is_threat BOOLEAN DEFAULT FALSE
         )
     ''')
     conn.commit()
@@ -301,7 +303,7 @@ if __name__ == "__main__":
 
     #Tables deletion
     # delete_tables()
-    # print("Database tables deleted.")
+    # print("Database tables deleted (users, logs, roles).")
     
     #Tables creation
     # init_roles_table()
@@ -313,5 +315,6 @@ if __name__ == "__main__":
     # print(select_logs())
     # print(select_users())
     # print(select_roles())
+    
 
     get_all_table_names()

@@ -586,7 +586,140 @@ RISK_SCORES = {
     'UNKNOWN': 1
 }
 
+# Critical Threshold: Above this risk score, system is "Critical" (default to 10)
 CRITICAL_THRESHOLD = 10
+
+# Configurable Threshold: How many low-severity errors constitute a threat? (default to 3)
+REPETITION_THRESHOLD = 3 
+
+# Helper to automatically review old non-threatening logs
+def auto_review_old_logs(conn):
+    """
+    Automatically marks as 'reviewed' (resolved) logs that are:
+    1. Older than 24h
+    2. Marked as NOT a threat (is_threat = FALSE)
+    3. Currently unreviewed
+    """
+    try:
+        cur = conn.cursor()
+        yesterday_obj = datetime.now() - timedelta(days=1)
+        yesterday_str = yesterday_obj.strftime("%Y-%m-%d %H:%M:%S")
+        
+        cur.execute("""
+            UPDATE logs 
+            SET is_reviewed = TRUE 
+            WHERE access_time < %s 
+            AND is_threat = FALSE 
+            AND is_reviewed = FALSE
+        """, (yesterday_str,))
+        
+        conn.commit()
+        cur.close()
+    except Exception as e:
+        print(f"Error in auto-review job: {e}")
+
+# NEW ENDPOINT: Toggle Threat Status
+@app.route('/api/admin/log/<int:log_id>/toggle-threat', methods=['POST'])
+@token_required
+@admin_required
+def toggle_threat_status(user_id, role, log_id):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # 1. Get current status and details of the target log
+        cur.execute("SELECT user_id, error_code, is_threat, is_reviewed FROM logs WHERE id = %s", (log_id,))
+        log = cur.fetchone()
+        
+        if not log:
+            return jsonify({'message': 'Log not found'}), 404
+            
+        target_user_id = log['user_id']
+        target_error_code = log['error_code']
+        current_threat_status = log['is_threat']
+        current_review_status = log['is_reviewed']
+        
+        # 2. DETERMINE TARGET STATE (FIXED LOGIC)
+        # We assume if it's PENDING (Threat & Not Reviewed), we want to make it SAFE.
+        # If it's anything else (Safe or Reviewed Threat), we want to make it ACTIVE THREAT.
+        
+        is_pending = current_threat_status and not current_review_status
+        
+        if is_pending:
+            # Action: Mark as Safe (False Positive)
+            new_threat_status = False
+            new_review_status = True
+        else:
+            # Action: Escalate to Active Threat
+            new_threat_status = True
+            new_review_status = False
+        
+        # 3. Apply to ALL related logs (Same User + Same Error Code)
+        cur.execute("""
+            UPDATE logs 
+            SET is_threat = %s, is_reviewed = %s
+            WHERE user_id = %s 
+            AND error_code = %s
+        """, (new_threat_status, new_review_status, target_user_id, target_error_code))
+        
+        rows_affected = cur.rowcount
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success', 
+            'new_is_threat': new_threat_status,
+            'updated_count': rows_affected
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'message': f'Error toggling status: {str(e)}'}), 500
+
+# NEW ENDPOINT: Mark as Reviewed
+@app.route('/api/admin/log/<int:log_id>/review', methods=['POST'])
+@token_required
+@admin_required
+def toggle_review_status(user_id, role, log_id):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # 1. Get current status
+        cur.execute("SELECT user_id, error_code, is_reviewed FROM logs WHERE id = %s", (log_id,))
+        log = cur.fetchone()
+        
+        if not log:
+            return jsonify({'message': 'Log not found'}), 404
+            
+        target_user_id = log['user_id']
+        target_error_code = log['error_code']
+        # For review button, we only support marking as reviewed (true)
+        # We don't support "unreviewing" via this specific button logic for now based on your request
+        new_review_status = True
+        
+        # 3. Batch update similar logs
+        # REMOVED 24h constraint
+        
+        cur.execute("""
+            UPDATE logs 
+            SET is_reviewed = %s
+            WHERE user_id = %s 
+            AND error_code = %s
+        """, (new_review_status, target_user_id, target_error_code))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success', 
+            'new_is_reviewed': new_review_status
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'message': f'Error updating review status: {str(e)}'}), 500
+
     
 # Main Security Dashboard Data Endpoint
 @app.route('/api/admin/security-data', methods=['GET'])
@@ -595,6 +728,10 @@ CRITICAL_THRESHOLD = 10
 def api_security_dashboard_data(user_id, role):
     try:
         conn = get_db_connection()
+        
+        # 0. HOUSEKEEPING: Auto-review old safe logs
+        auto_review_old_logs(conn)
+        
         cur = conn.cursor()
 
         # 1. Admin Info
@@ -606,76 +743,89 @@ def api_security_dashboard_data(user_id, role):
         yesterday_obj = datetime.now() - timedelta(days=1)
         yesterday_str = yesterday_obj.strftime("%Y-%m-%d %H:%M:%S")
 
-        # 3. Blocked Counters (Raw count)
+        # 3. Blocked Counters (Raw count of ALL blocked attempts in 24h)
         cur.execute("SELECT COUNT(*) as blocked FROM logs WHERE entry_allowed = 0 AND access_time >= %s", (yesterday_str,))
         row = cur.fetchone()
         blocked_24h = row['blocked'] if row else 0
 
         # --- SMART LOGIC STARTS HERE ---
         
-        # 4. Fetch ALL raw incidents from last 24h to analyze patterns
-        # We need everything to count repetitions per user
+        # 4. Fetch logs for analysis
+        # Strategy: Get ALL logs from last 24h OR any older logs that are still threats and unreviewed
+        # This ensures active threats don't disappear just because 24h passed.
         cur.execute("""
-            SELECT id, user_id, role, area, access_time, entry_allowed, reason, error_code 
+            SELECT id, user_id, role, area, access_time, entry_allowed, reason, error_code, is_threat, is_reviewed 
             FROM logs 
-            WHERE entry_allowed = 0 AND access_time >= %s
+            WHERE entry_allowed = 0 
+            AND (access_time >= %s OR (is_threat = TRUE AND is_reviewed = FALSE))
             ORDER BY access_time DESC
         """, (yesterday_str,))
         
         all_logs = cur.fetchall()
         
-        # A. Analyze Repetitions (Count how many failures per user)
+        # Analyze Repetitions for logs without explicit status yet
         user_failure_counts = {}
         for log in all_logs:
-            # Handle row/dict access
             u_id = log['user_id'] if isinstance(log, dict) or hasattr(log, 'keys') else log[1]
             if u_id not in user_failure_counts:
                 user_failure_counts[u_id] = 0
             user_failure_counts[u_id] += 1
 
-        # B. Process Logs & Calculate Metrics
+        # Process Logs & Calculate Metrics
         total_risk_score = 0
-        active_threats_set = set() # To store unique "real" threats
+        active_threats_set = set()
         recent_incidents = []
         
-        # Configurable Threshold: How many low-severity errors constitute a threat?
-        REPETITION_THRESHOLD = 3 
-
         for i, log in enumerate(all_logs):
             log_dict = dict(log)
             reason_text = log_dict.get('reason', '') or ''
             error_code = log_dict.get('error_code') or 'UNKNOWN'
             u_id = log_dict.get('user_id', 'Unknown')
+            is_threat = log_dict.get('is_threat') # Boolean from DB
+            is_reviewed = log_dict.get('is_reviewed') # Boolean from DB
             
-            # 1. Base Score
+            # Base Score
             score = RISK_SCORES.get(error_code, 1)
             
-            # 2. Determine Severity
+            # Determine Severity
             severity = 'low'
             if score >= 10: severity = 'high'
             elif score >= 3: severity = 'medium'
             
-            # 3. SMART STATUS: Auto-resolve vs Pending
-            # Rule: If High Severity OR (Low Severity BUT Repeated > 3 times) -> Pending
-            # Otherwise -> Auto-resolved
-            is_repeated = user_failure_counts.get(u_id, 0) >= REPETITION_THRESHOLD
+            # --- STATUS DETERMINATION LOGIC ---
             
-            if severity == 'high' or severity == 'medium' or is_repeated:
+            # Initialization logic for logs that have never been processed (NULL in DB)
+            if is_threat is None:
+                is_repeated = user_failure_counts.get(u_id, 0) >= REPETITION_THRESHOLD
+                # Calculate initial threat status
+                calculated_is_threat = (severity == 'high' or severity == 'medium' or is_repeated)
+                
+                # PERSIST THIS CALCULATION TO DB so it sticks!
+                # We do this lazily here or could do it in a background job
+                # For simplicity, we just use the calculated value for display now
+                is_threat = calculated_is_threat
+            
+            if is_reviewed is None:
+                is_reviewed = False
+
+            # Determine Frontend Status ('pending' = Active Threat that needs review)
+            if is_threat and not is_reviewed:
                 status = 'pending'
-                # Add to Active Threats Count because it's significant
                 active_threats_set.add(u_id)
-                # Add score to system health
-                total_risk_score += score
+                total_risk_score += score # Only count active threats towards risk score
             else:
-                status = 'resolved' # Auto-resolved (Noise)
-                # We do NOT add to total_risk_score or active_threats to keep dashboard "Green" if it's just noise
+                status = 'resolved' 
             
-            # 4. Add to list (Limit to 10 for display)
-            if len(recent_incidents) < 10:
-                # Opcional: Afegir indicador visual si és per repetició
+            # Add to list (Limit to 10 for display)
+            # Only show 'resolved' logs if they are recent (<24h)
+            log_time_str = str(log_dict.get('access_time', ''))
+            is_recent = log_time_str >= yesterday_str
+            
+            if (status == 'pending' or is_recent) and len(recent_incidents) < 10:
                 display_type = reason_text
-                if is_repeated and severity == 'low':
-                    display_type = f"{reason_text} (Repeated {user_failure_counts.get(u_id)}x)"
+                # Add context if it's a repetition threat
+                if is_threat and severity == 'low':
+                     display_type = f"{reason_text} (Repeated {user_failure_counts.get(u_id)}x)"
 
                 recent_incidents.append({
                     'id': str(log_dict.get('id', i)),
@@ -683,12 +833,11 @@ def api_security_dashboard_data(user_id, role):
                     'type': display_type, 
                     'description': error_code,
                     'source_id': u_id, 
-                    'timestamp': str(log_dict.get('access_time', '')),
+                    'timestamp': log_time_str,
                     'status': status 
                 })
 
-        # 5. System Health
-        # Now reflects only "Real" threats, not noise
+        # System Health
         if total_risk_score == 0:
             system_health = 'Good'
         elif total_risk_score < CRITICAL_THRESHOLD: 
@@ -702,8 +851,8 @@ def api_security_dashboard_data(user_id, role):
         response_data = {
             'admin_name': admin_name,
             'stats': {
-                'active_threats': len(active_threats_set), # Only "Real" threats
-                'blocked_attempts_24h': blocked_24h, # Raw count (shows total activity)
+                'active_threats': len(active_threats_set),
+                'blocked_attempts_24h': blocked_24h,
                 'system_health': system_health,
                 'risk_score': total_risk_score
             },
@@ -723,188 +872,3 @@ def api_security_dashboard_data(user_id, role):
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
-
-
-
-# @app.route('/administrator')
-# def administrator():
-#     user_id = session.get('user_id')
-#     if not user_id:
-#         return redirect(url_for('login'))
-
-#     last_3_logs = get_last_3_logs()
-#     last_3_users = get_last_3_users()
-
-#     conn = get_db_connection()
-#     cur = conn.cursor()
-#     cur.execute('SELECT name FROM users WHERE id = %s', (user_id,))
-#     user = cur.fetchone()
-#     cur.close()
-#     conn.close()
-
-#     name = user['name'] if user else "Administrator"
-
-#     return render_template('administrator.html', name=name, last_3_logs=last_3_logs, last_3_users=last_3_users)
-
-
-# @app.route('/download_logs')
-# def download_logs():
-#     logs = get_all_logs()
-#     output = StringIO()
-#     writer = csv.writer(output, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-#     writer.writerow(['User ID', 'Role', 'Area', 'Access Time', 'Entry Allowed?', 'Reason'])
-#     output.write('\ufeff')
-
-#     for log in logs:
-#         writer.writerow([
-#             log['user_id'] if log['user_id'] else 'N/A',
-#             log['role'] if log['role'] else 'N/A',
-#             log['area'] if log['area'] else 'N/A',
-#             log['access_time'] if log['access_time'] else 'N/A',
-#             log['entry_allowed'] if log['entry_allowed'] is not None else 'N/A',
-#             log['reason'] if log['reason'] else 'N/A',
-#         ])
-
-#     output.seek(0)
-#     return Response(
-#         output.getvalue(),
-#         mimetype='text/csv; charset=utf-8',
-#         headers={'Content-Disposition': 'attachment; filename=logs.csv'}
-#     )
-
-
-# @app.route('/full_logs')
-# def full_logs():
-#     logs = get_all_logs()
-#     return render_template('full_logs.html', logs=logs)
-
-# @app.route('/full_users')
-# def full_users():
-#     users = get_all_users()
-#     return render_template('full_users.html', users=users)
-
-
-# @app.route('/download_users')
-# def download_users():
-#     users = get_all_users()
-
-#     output = StringIO()
-#     writer = csv.writer(output, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-#     writer.writerow(['ID', 'Name', 'Email', 'Role'])
-#     output.write('\ufeff')
-
-#     for user in users:
-#         writer.writerow([
-#             user['id'],
-#             user['name'],
-#             user['email'],
-#             user['role'],
-#         ])
-
-#     output.seek(0)
-#     return Response(
-#         output.getvalue(),
-#         mimetype='text/csv; charset=utf-8',
-#         headers={'Content-Disposition': 'attachment; filename=users.csv'}
-#     )
-
-
-# @app.route('/edit-user-redirect', methods=['POST'])
-# def edit_user_redirect():
-#     email = request.form.get('edit_email', '').strip()
-#     if not email:
-#         return render_template('administrator.html',
-#                             name=session.get('name', 'Administrator'),
-#                             last_3_logs=get_last_3_logs(),
-#                             last_3_users=get_last_3_users(),
-#                             edit_redirect_error="No email provided",
-#                             edit_email=email)
-    
-#     user = get_user_by_email(email)
-#     if not user:
-#         return render_template('administrator.html',
-#                             name=session.get('name', 'Administrator'),
-#                             last_3_logs=get_last_3_logs(),
-#                             last_3_users=get_last_3_users(),
-#                             edit_redirect_error="User not found",
-#                             edit_email=email)
-
-#     session['edit_user_email'] = email
-#     return redirect(url_for('edit_user_form'))
-
-
-# @app.route('/edit-user', methods=['GET', 'POST'])
-# def edit_user_form():
-#     email = session.get('edit_user_email')
-#     if not email:
-#         return redirect(url_for('administrator'))
-    
-#     user = get_user_by_email(email)
-#     if not user:
-#         return redirect(url_for('administrator'))
-
-#     message = None
-#     if request.method == 'POST':
-#         if request.form.get('action') == 'apply':
-#             new_name = request.form.get('name', '').strip()
-#             new_email = request.form.get('email', '').strip()
-#             new_role = request.form.get('role', '').strip()
-            
-#             if not all([new_name, new_email, new_role]):
-#                 message = ("error", "All fields are required")
-#             else:
-#                 try:
-#                     update_user(email, new_name, new_email, new_role)
-#                     session['edit_user_email'] = new_email
-#                     message = ("success", "User updated successfully")
-#                 except Exception as e:
-#                     message = ("error", f"Error updating user: {str(e)}")
-    
-#     user = get_user_by_email(session.get('edit_user_email'))
-#     if not user:
-#         return redirect(url_for('administrator'))
-    
-#     return render_template("edit_user.html", 
-#                          user=user,
-#                          message=message)
-
-
-
-# @app.route('/delete-user', methods=['POST'])
-# def delete_user():
-#     email = request.form.get('delete_email', '').strip()
-#     error = None
-    
-#     if not email:
-#         error = "No email provided"
-#     else:
-#         user = get_user_by_email(email)
-#         if not user:
-#             error = "User not found"
-#         else:
-#             delete_user_by_email(email)
-#             error = "User deleted successfully"
-    
-#     #Pass the error to administrator template
-#     last_3_logs = get_last_3_logs()
-#     last_3_users = get_last_3_users()
-#     conn = get_db_connection()
-#     cur = conn.cursor()
-#     cur.execute('SELECT name FROM users WHERE id = %s', (session.get('user_id'),))
-#     user = cur.fetchone()
-#     cur.close()
-#     conn.close()
-    
-#     return render_template('administrator.html', 
-#                          name=user['name'] if user else "Administrator",
-#                          last_3_logs=last_3_logs,
-#                          last_3_users=last_3_users,
-#                          delete_error=error,
-#                          delete_email=email)
-
-
-# #Logout
-# @app.route('/logout')
-# def logout():
-#     session.clear()
-#     return redirect(url_for('login'))

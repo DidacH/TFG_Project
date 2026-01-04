@@ -69,10 +69,9 @@ def load_rules_from_db():
         _LAST_CACHE_UPDATE = current_time
         cur.close()
         conn.close()
-        # print("Cache de regles actualitzada des de la BDD") # Descomentar per debug
         
     except Exception as e:
-        print(f"Error llegint regles de la BDD: {e}")
+        print(f"Error while reading DB rules: {e}")
         # If BDD read fails, keep existing cache if any
         if _RULES_CACHE is None:
             _RULES_CACHE = {}
@@ -92,7 +91,7 @@ def verify_qr(content, secret_key, target_area):
         return {
             'valid': False,
             'error_code': 'MALFORMED_QR', 
-            'reason': 'Malformed',
+            'reason': 'Malformed Code',
             'user_id': None,
             'role': None,
             'access_time': time_str
@@ -122,7 +121,7 @@ def verify_qr(content, secret_key, target_area):
         return {
             'valid': False,
             'error_code': 'UNKNOWN_USER',
-            'reason': 'User is was not found',
+            'reason': 'User ID was not found',
             'user_id': user_id,
             'role': None,
             'access_time': time_str

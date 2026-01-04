@@ -1,41 +1,62 @@
-import bcrypt
-from database import get_db_connection
+import sys
+import os
+import uuid
+from datetime import datetime
+from dotenv import load_dotenv
 
-def hash_password(plain_password):
-    """Generate a secure hash for the password."""
-    # Convert to bytes, generate salt and hash, and return as string for DB storage
-    return bcrypt.hashpw(plain_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+load_dotenv()
+
+sys.path.append(os.path.join(os.path.dirname(__file__), 'backend'))
+
+try:
+    from database import get_db_connection, save_user
+    from QR_generation_validation import generate_qr
+except ImportError as e:
+    print(f"Error d'importació: {e}")
+    print("Assegura't que la carpeta 'backend' existeix i conté database.py i QR_generation_validation.py")
+    sys.exit(1)
+
+SIGNATURE_KEY = os.getenv("SIGNATURE_KEY")
+if not SIGNATURE_KEY:
+    print("Error: No s'ha trobat SIGNATURE_KEY al fitxer .env")
+    sys.exit(1)
+
+SIGNATURE_KEY_BYTES = SIGNATURE_KEY.encode('utf-8')
 
 def seed_data():
     conn = get_db_connection()
     cur = conn.cursor()
 
-    print("🌱 Initiating seeding process in the database...")
+    print("🌱 Iniciant el procés de seed a la base de dades...")
 
     try:
-        print("   🧹 Cleaning existing tables...")
-        cur.execute("TRUNCATE TABLE logs, users, access_rules, system_config RESTART IDENTITY CASCADE;")
+        # Table cleanup
+        print("   🧹 Netejant taules existents...")
+        cur.execute("TRUNCATE TABLE logs, users, access_rules, system_config, alert_rules RESTART IDENTITY CASCADE;")
+        
+        conn.commit()
 
-        # CREATE DEFAULT USERS
-        print("   👤 Creating default users...")
-        default_password = hash_password('1234')
-
-        users = [
-            # (email, password_hash, role)
-            ('admin@uni.edu', default_password, 'Admin'),
-            ('student1@uni.edu', default_password, 'Student'),
-            ('prof1@uni.edu', default_password, 'Professor'),
-            ('staff1@uni.edu', default_password, 'Staff'),
-            ('hacker@evil.com', default_password, 'Student') # Attacker simulation
+        # USER CREATION
+        print("   👤 Creant usuaris per defecte...")
+        
+        users_to_create = [
+            ("Admin User", "didac.hierro@gmail.com", "1234", "Admin"),
+            ("Student User", "student1@uni.edu", "1234", "Student"),
+            ("Professor User", "prof1@uni.edu", "1234", "Professor"),
+            ("Staff User", "staff1@uni.edu", "1234", "Staff"),
+            ("Hacker User", "hacker@evil.com", "1234", "Student") # Attacker simulation
         ]
 
-        cur.executemany(
-            "INSERT INTO users (email, password_hash, role) VALUES (%s, %s, %s)",
-            users
-        )
+        for name, email, password, role in users_to_create:
+            user_id = str(uuid.uuid4())
+            qr_image, last_qr_time = generate_qr(user_id, SIGNATURE_KEY_BYTES)
+            registered_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # HARD RULES DEFINITION
-        print("   🛡️  Configuring access rules")
+            save_user(user_id, name, email, password, role, qr_image, last_qr_time, registered_at)
+            print(f"      - Creat: {email} ({role})")
+
+        # ACCESS RULES DEFINITION
+        print("   🛡️  Configurant regles d'accés...")
         rules = [
             ('Student', 'Classroom_1'),
             ('Student', 'Library'),
@@ -59,7 +80,7 @@ def seed_data():
         print("   ⚙️  Establint configuració global...")
         configs = [
             ('closed_hours', '23,0,1,2,3,4,5,6'), # Closed from 11 PM to 7 AM
-            ('maintenance_mode', 'false')        # Example of another possible maintenance configuration
+            ('maintenance_mode', 'false')
         ]
 
         cur.executemany(
@@ -67,25 +88,15 @@ def seed_data():
             configs
         )
 
-        # NOTIFICATION RULES SETUP
+        # NOTIFICATION RULES
         print("   🔔 Configurant regles d'alerta personalitzades...")
         alert_configs = [
-            # (Event, Role, Area)
-
-            # Notify always when a malformed QR code is used
-            ('MALFORMED_QR', 'ALL', 'ALL'),
-            
-            # Notify always when a forged QR code is used
-            ('FORGED_QR', 'ALL', 'ALL'),
-
-            # Notify always when an unknown user is read in the QR
-            ('UNKNOWN_USER', 'ALL', 'ALL'),
-
-            # Notify if student tries to access sensible area (server room)
-            ('AREA_VIOLATION', 'Student', 'Server_Room'),
-            
-            # Notify if student accesses any area during closed hours
-            ('TIME_VIOLATION', 'Student', 'ALL')
+            # (Event, Role Filter, Area Filter)
+            ('MALFORMED_QR', 'ALL', 'ALL'),     # Always notify malformed QR
+            ('FORGED_QR', 'ALL', 'ALL'),        # Always notify forged QR
+            ('UNKNOWN_USER', 'ALL', 'ALL'),     # Always notify unknown user
+            ('AREA_VIOLATION', 'Student', 'Server_Room'), # Specific alert for students (server room is a restricted area)
+            ('TIME_VIOLATION', 'Student', 'ALL')          # Always notify time violations for students
         ]
 
         cur.executemany(
@@ -94,24 +105,20 @@ def seed_data():
         )
 
         conn.commit()
-        print("\n✅ Database correctly populated!")
-        print("   Users created (Password: '1234'):")
-        print("   - admin@uni.edu (Admin)")
-        print("   - student1@uni.edu (Student)")
-        print("   - prof1@uni.edu (Professor)")
-        print("   - staff1@uni.edu (Staff)")
+        print("\n✅ Base de dades poblada correctament!")
+        print("   Contrasenya per defecte: '1234'")
 
     except Exception as e:
         conn.rollback()
-        print(f"\n❌ Error during seeding: {e}")
+        print(f"\n❌ Error durant el seed: {e}")
     finally:
         cur.close()
         conn.close()
 
 if __name__ == '__main__':
-    # Security check before seeding
-    confirm = input("This will delete all current data in the database. Are you sure? (y/n): ")
-    if confirm.lower() == 'y':
+    # Security confirmation
+    confirm = input("Això esborrarà totes les dades actuals de la base de dades. Estàs segur? (s/n): ")
+    if confirm.lower() == 's' or confirm.lower() == 'y':
         seed_data()
     else:
-        print("Operation cancelled.")
+        print("Operació cancel·lada.")

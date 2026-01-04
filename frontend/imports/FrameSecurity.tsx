@@ -33,6 +33,7 @@ interface SecurityStats {
   active_threats: number;
   blocked_attempts_24h: number;
   system_health: string;
+  risk_score: number;
 }
 
 interface SecurityData {
@@ -48,21 +49,31 @@ interface ActionButtonProps {
     children: React.ReactNode;
     variant?: 'primary' | 'secondary'
     isLoading?: boolean;
+    disabled?: boolean; // Added prop
     className?: string;
     icon?: React.ElementType;
 }
 
-function ActionButton({ onClick, children, variant = 'primary', isLoading = false, className = '', icon: Icon }: ActionButtonProps) {
+function ActionButton({ onClick, children, variant = 'primary', isLoading = false, disabled = false, className = '', icon: Icon }: ActionButtonProps) {
     const baseClasses = "box-border cursor-pointer flex h-[50px] items-center justify-center rounded-[8px] w-full transition-colors font-medium text-lg md:text-xl";
     const variantClasses = {
         primary: "bg-[#c8102e] hover:bg-[#b00f29] active:bg-[#a00d25] text-white shadow-lg hover:shadow-xl",
         secondary: "bg-[#eeeeee] hover:bg-[#e0e0e0] active:bg-[#d5d5d5] text-black shadow-md hover:shadow-lg",
     };
+    
+    // Combine loading or prop disabled
+    const isButtonDisabled = isLoading || disabled;
+
     return (
         <button 
             onClick={onClick} 
-            className={cn(baseClasses, variantClasses[variant], isLoading ? 'opacity-75 cursor-not-allowed' : '', className)}
-            disabled={isLoading}
+            className={cn(
+                baseClasses, 
+                variantClasses[variant], 
+                isButtonDisabled ? 'opacity-75 cursor-not-allowed' : '', 
+                className
+            )}
+            disabled={isButtonDisabled}
         >
             {isLoading ? <Loader2 className="animate-spin h-6 w-6" /> : (
                 <div className="flex items-center justify-center gap-2">
@@ -78,31 +89,31 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
     return <h2 className="text-2xl md:text-3xl font-semibold text-black text-left">{children}</h2>;
 }
 
+// Toggle Button: Handles "Mark Safe" (if pending) OR "Escalate to Threat" (if resolved)
 interface SecurityActionToggleProps {
     status: 'resolved' | 'pending';
     onClick: () => void;
+    isLoading?: boolean;     // Is this specific button loading?
+    isDisabled?: boolean;    // Is the UI blocked globally?
 }
 
-function SecurityActionToggle({ status, onClick }: SecurityActionToggleProps) {
+function SecurityActionToggle({ status, onClick, isLoading, isDisabled }: SecurityActionToggleProps) {
     const [showTooltip, setShowTooltip] = useState(false);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-    const isThreat = status === 'pending';
+    const isPending = status === 'pending';
 
     const handleMouseEnter = () => {
-        // Clear any existing timer just in case
+        if (isDisabled || isLoading) return; // No tooltip if disabled
         if (timerRef.current) clearTimeout(timerRef.current);
-        // Delay 600ms before showing
         timerRef.current = setTimeout(() => setShowTooltip(true), 600);
     };
 
     const handleMouseLeave = () => {
-        // Clear timer immediately to prevent showing if user left quickly
         if (timerRef.current) clearTimeout(timerRef.current);
         setShowTooltip(false);
     };
 
-    // Cleanup on unmount to prevent memory leaks or state updates on unmounted component
     useEffect(() => {
         return () => {
             if (timerRef.current) clearTimeout(timerRef.current);
@@ -115,26 +126,29 @@ function SecurityActionToggle({ status, onClick }: SecurityActionToggleProps) {
                 onClick={onClick}
                 onMouseEnter={handleMouseEnter}
                 onMouseLeave={handleMouseLeave}
+                disabled={isDisabled || isLoading}
                 className={cn(
                     "p-2 rounded-full transition-all duration-200 border shadow-sm",
-                    isThreat 
-                        ? "bg-green-50 border-green-200 text-green-600 hover:bg-green-100 hover:scale-105" // Opció per marcar com segur
-                        : "bg-gray-50 border-gray-200 text-gray-400 hover:bg-red-50 hover:text-red-600 hover:border-red-200 hover:scale-105" // Opció per marcar com amenaça
+                    isPending 
+                        ? "bg-gray-50 border-gray-200 text-gray-400 hover:bg-green-50 hover:text-green-600 hover:border-green-200 hover:scale-105" 
+                        : "bg-green-50 border-green-200 text-green-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 hover:scale-105",
+                    (isDisabled || isLoading) && "opacity-50 cursor-not-allowed transform-none hover:scale-100 hover:bg-gray-50 hover:text-gray-400 hover:border-gray-200"
                 )}
             >
-                {isThreat ? (
-                    <ShieldCheck className="w-5 h-5" /> // Safe Icon
+                {isLoading ? (
+                    <Loader2 className="w-5 h-5 animate-spin text-gray-500" />
+                ) : isPending ? (
+                    <ShieldCheck className="w-5 h-5" /> 
                 ) : (
-                    <ShieldAlert className="w-5 h-5" /> // Danger Icon
+                    <ShieldAlert className="w-5 h-5" /> 
                 )}
             </button>
 
-            {/* Animated tooltip */}
-            {showTooltip && (
+            {showTooltip && !isDisabled && !isLoading && (
                 <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 w-48 bg-gray-800 text-white text-xs rounded-md py-1.5 px-3 z-50 animate-in fade-in zoom-in-95 duration-200 shadow-xl">
                     <div className="absolute right-[-4px] top-1/2 -translate-y-1/2 w-2 h-2 bg-gray-800 rotate-45"></div>
                     <p className="font-medium relative z-10 text-center">
-                        {isThreat 
+                        {isPending 
                             ? "Mark as False Positive (Safe)" 
                             : "Escalate to Active Threat"}
                     </p>
@@ -144,18 +158,19 @@ function SecurityActionToggle({ status, onClick }: SecurityActionToggleProps) {
     );
 }
 
+// Review Button: Mark as Reviewed (Only appears if Pending)
 interface ReviewButtonProps {
-    status: 'resolved' | 'pending';
     onClick: () => void;
+    isLoading?: boolean;
+    isDisabled?: boolean;
 }
 
-function ReviewButton({ status, onClick }: ReviewButtonProps) {
+function ReviewButton({ onClick, isLoading, isDisabled }: ReviewButtonProps) {
     const [showTooltip, setShowTooltip] = useState(false);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-    const isPending = status === 'pending';
-
     const handleMouseEnter = () => {
+        if (isDisabled || isLoading) return;
         if (timerRef.current) clearTimeout(timerRef.current);
         timerRef.current = setTimeout(() => setShowTooltip(true), 600);
     };
@@ -177,21 +192,24 @@ function ReviewButton({ status, onClick }: ReviewButtonProps) {
                 onClick={onClick}
                 onMouseEnter={handleMouseEnter}
                 onMouseLeave={handleMouseLeave}
+                disabled={isDisabled || isLoading}
                 className={cn(
-                    "p-2 rounded-full transition-all duration-200 border shadow-sm",
-                    isPending 
-                        ? "bg-gray-50 border-gray-200 text-gray-400 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 hover:scale-105" // Action: Mark Reviewed
-                        : "bg-blue-50 border-blue-200 text-blue-600 hover:bg-gray-100 hover:text-gray-500 hover:border-gray-300 hover:scale-105" // Action: Un-mark (Pending)
+                    "p-2 rounded-full transition-all duration-200 border shadow-sm bg-gray-50 border-gray-200 text-gray-400 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 hover:scale-105",
+                    (isDisabled || isLoading) && "opacity-50 cursor-not-allowed transform-none hover:bg-gray-50 hover:text-gray-400 hover:border-gray-200"
                 )}
             >
-                {isPending ? <CheckCircle className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
+                {isLoading ? (
+                    <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+                ) : (
+                    <CheckCircle className="w-5 h-5" />
+                )}
             </button>
 
-            {showTooltip && (
+            {showTooltip && !isDisabled && !isLoading && (
                 <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 w-48 bg-gray-800 text-white text-xs rounded-md py-1.5 px-3 z-50 animate-in fade-in zoom-in-95 duration-200 shadow-xl">
                     <div className="absolute right-[-4px] top-1/2 -translate-y-1/2 w-2 h-2 bg-gray-800 rotate-45"></div>
                     <p className="font-medium relative z-10 text-center">
-                        {isPending ? "Mark as Reviewed" : "Mark as Pending (Unread)"}
+                        Mark as Reviewed
                     </p>
                 </div>
             )}
@@ -207,6 +225,8 @@ export default function FrameSecurity() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loadingDots, setLoadingDots] = useState("");
+  // Track which incident is currently being updated to show spinner
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
   // Helper to get severity color
   const getSeverityColor = (severity: string) => {
@@ -243,13 +263,16 @@ export default function FrameSecurity() {
     navigate("/login");
   }, [navigate]);
 
-  const fetchSecurityData = useCallback(async () => {
+  const fetchSecurityData = useCallback(async (isInitialLoad = false) => {
     const token = getToken();
     if (!token) {
         handleLogout();
         return;
     }
-    setLoading(true);
+    
+    // Only show full page loader on initial load
+    if (isInitialLoad) setLoading(true);
+    
     try {
         const response = await fetch(`${API_URL}/api/admin/security-data`, {
             headers: { 'Authorization': `Bearer ${token}` },
@@ -267,14 +290,13 @@ export default function FrameSecurity() {
     } catch (err: any) {
         console.error("Error real:", err);
         setError(err.message); 
-        setLoading(false);
     } finally {
-        setLoading(false);
+        if (isInitialLoad) setLoading(false);
     }
   }, [handleLogout]);
 
   useEffect(() => {
-    fetchSecurityData();
+    fetchSecurityData(true);
   }, [fetchSecurityData]);
 
   useEffect(() => {
@@ -287,92 +309,59 @@ export default function FrameSecurity() {
     return () => clearInterval(interval);
   }, [loading]);
 
-  const getRelatedIncidentIds = (targetIncident: SecurityIncident, allIncidents: SecurityIncident[]): string[] => {
-      return allIncidents
-          .filter(inc => 
-              inc.source_id === targetIncident.source_id && // Same User
-              inc.description === targetIncident.description // Same Threat Type (e.g. TIME_VIOLATION)
-          )
-          .map(inc => inc.id);
-  };
+  // --- ACTIONS LOGIC ---
 
-  const handleToggleIncident = async (targetIncident: SecurityIncident) => {
-    if (!data) return;
+  // Handle Threat Toggle (Reliable)
+  const handleToggleThreat = async (incident: SecurityIncident) => {
+    if (actionLoadingId !== null) return; // Prevent double clicks
+    const token = getToken();
+    if (!token) return;
 
-    const currentStatus = targetIncident.status;
-    const newStatus = currentStatus === 'pending' ? 'resolved' : 'pending';
-    const isBatchAction = newStatus === 'resolved' && targetIncident.type.includes("(Repeated");
-    
-    // Identify logs to update
-    let idsToUpdate: string[] = [targetIncident.id];
+    setActionLoadingId(incident.id); // Start loading spinner on button
 
-    if (isBatchAction) {
-        // Mark all similar low-severity pending incidents from the same source as resolved
-        idsToUpdate = data.recent_incidents
-            .filter(inc => 
-                inc.source_id === targetIncident.source_id && // Same user
-                inc.severity === 'low' &&                     // Only low severity
-                inc.status === 'pending' &&                   // Pending status
-                inc.description === targetIncident.description // Same Threat Type
-            )
-            .map(inc => inc.id);
+    try {
+        const response = await fetch(`${API_URL}/api/admin/log/${incident.id}/toggle-threat`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
         
-        // Ensure the current ID is included (just in case)
-        if (!idsToUpdate.includes(targetIncident.id)) idsToUpdate.push(targetIncident.id);
-        
-        console.log(`Batch resolving ${idsToUpdate.length} incidents for user ${targetIncident.source_id}`);
+        if (response.ok) {
+            // RELIABLE: Re-fetch data from server to ensure stats match DB exactly
+            await fetchSecurityData(false);
+        } else {
+            console.error("Failed to toggle threat status");
+        }
+    } catch (error) {
+        console.error("Error toggling threat:", error);
+    } finally {
+        setActionLoadingId(null); // Stop loading regardless of outcome
     }
-
-    // Update the local state optimistically
-    const updatedIncidents = data.recent_incidents.map(inc => 
-        idsToUpdate.includes(inc.id) ? { ...inc, status: newStatus as 'resolved' | 'pending' } : inc
-    );
-
-    // Recalculate active threats (this is a visual approximation)
-    const uniqueThreats = new Set(
-        updatedIncidents
-            .filter(i => i.status === 'pending')
-            .map(i => i.source_id)
-    );
-    
-    setData({
-        ...data,
-        stats: { ...data.stats, active_threats: uniqueThreats.size },
-        recent_incidents: updatedIncidents
-    });
   };
 
-  const handleBatchStatusToggle = async (targetIncident: SecurityIncident) => {
-    if (!data) return;
+  // Handle Review Toggle (Reliable)
+  const handleMarkReviewed = async (incident: SecurityIncident) => {
+    if (actionLoadingId !== null) return; // Prevent double clicks
+    const token = getToken();
+    if (!token) return;
 
-    // Determine new status based on current status
-    const newStatus = targetIncident.status === 'pending' ? 'resolved' : 'pending';
-    
-    // Find all IDs that need to be updated (Batch Logic)
-    const idsToUpdate = getRelatedIncidentIds(targetIncident, data.recent_incidents);
+    setActionLoadingId(incident.id);
 
-    console.log(`Updating ${idsToUpdate.length} incidents to ${newStatus} (Batch: Same User + Same Type)`);
+    try {
+        const response = await fetch(`${API_URL}/api/admin/log/${incident.id}/review`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
 
-    // Optimistic UI Update
-    const updatedIncidents = data.recent_incidents.map(inc => 
-        idsToUpdate.includes(inc.id) ? { ...inc, status: newStatus as 'resolved' | 'pending' } : inc
-    );
-
-    // Recalculate Active Threats (Visual Approximation)
-    // Counts unique user IDs that still have at least one 'pending' incident
-    const uniqueThreats = new Set(
-        updatedIncidents
-            .filter(i => i.status === 'pending')
-            .map(i => i.source_id)
-    );
-    
-    setData({
-        ...data,
-        stats: { ...data.stats, active_threats: uniqueThreats.size },
-        recent_incidents: updatedIncidents
-    });
-    
-    // NOTE: In a real app, you would send 'idsToUpdate' and 'newStatus' to the backend here.
+        if (response.ok) {
+            await fetchSecurityData(false);
+        } else {
+            console.error("Failed to mark reviewed");
+        }
+    } catch (error) {
+        console.error("Error marking reviewed:", error);
+    } finally {
+        setActionLoadingId(null);
+    }
   };
 
 
@@ -497,12 +486,10 @@ export default function FrameSecurity() {
                                             )}>
                                                 <div className="flex flex-col gap-1 mb-3 md:mb-0">
                                                     <div className="flex items-center gap-3">
-                                                        {/* Severity Badge */}
                                                         <span className={cn("px-2 py-1 rounded-md text-xs font-bold uppercase border", getSeverityColor(incident.severity))}>
                                                             {incident.severity}
                                                         </span>
                                                         
-                                                        {/* Incident Type Title */}
                                                         <span className={cn(
                                                             "font-medium", 
                                                             incident.status === 'pending' ? "text-red-900" : "text-gray-700"
@@ -510,7 +497,6 @@ export default function FrameSecurity() {
                                                             {incident.type}
                                                         </span>
                                                         
-                                                        {/* Action Required Label */}
                                                         {incident.status === 'pending' && (
                                                             <span className="flex items-center text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full animate-pulse">
                                                                 <AlertTriangle className="w-3 h-3 mr-1" /> Action Required
@@ -533,20 +519,24 @@ export default function FrameSecurity() {
                                                 {/* ACTIONS COLUMN */}
                                                 <div className="flex items-center gap-3 pl-0 md:pl-4">
                                                     
-                                                    {/* Button 1: Mark as Reviewed (Batch Action by Type) */}
-                                                    <ReviewButton 
-                                                        status={incident.status}
-                                                        onClick={() => handleBatchStatusToggle(incident)} 
-                                                    />
+                                                    {/* Button 1: Mark as Reviewed (Only if Pending) */}
+                                                    {incident.status === 'pending' && (
+                                                        <ReviewButton 
+                                                            onClick={() => handleMarkReviewed(incident)}
+                                                            isLoading={actionLoadingId === incident.id}
+                                                            isDisabled={actionLoadingId !== null}
+                                                        />
+                                                    )}
 
-                                                    {/* Separator */}
-                                                    <div className="h-6 w-px bg-gray-300"></div>
+                                                    {/* Separator if two buttons */}
+                                                    {incident.status === 'pending' && <div className="h-6 w-px bg-gray-300"></div>}
 
-                                                    {/* Button 2: Toggle Classification Safe/Threat (Batch Action by Type) */}
-                                                    {/* Note: This technically does the same logic as reviewed now, but implies different intent */}
+                                                    {/* Button 2: Toggle Classification Safe/Threat */}
                                                     <SecurityActionToggle 
                                                         status={incident.status} 
-                                                        onClick={() => handleBatchStatusToggle(incident)}
+                                                        onClick={() => handleToggleThreat(incident)}
+                                                        isLoading={actionLoadingId === incident.id}
+                                                        isDisabled={actionLoadingId !== null}
                                                     />
                                                 </div>
                                             </div>
