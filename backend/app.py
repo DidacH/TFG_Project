@@ -720,6 +720,45 @@ def toggle_review_status(user_id, role, log_id):
     except Exception as e:
         return jsonify({'message': f'Error updating review status: {str(e)}'}), 500
 
+
+# Endpoint to toggle System Lockdown
+@app.route('/api/admin/system-lockdown', methods=['POST'])
+@token_required
+@admin_required
+def toggle_system_lockdown(user_id, role):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Check current status in system_config table
+        # We use a key-value store approach for system-wide settings
+        cur.execute("SELECT value_data FROM system_config WHERE key_name = 'system_lockdown'")
+        row = cur.fetchone()
+        
+        # Determine new status (Toggle)
+        current_status = row['value_data'] == 'true' if row else False
+        new_status = not current_status
+        new_status_str = 'true' if new_status else 'false'
+        
+        # Update or Insert based on existence
+        if row:
+            cur.execute("UPDATE system_config SET value_data = %s WHERE key_name = 'system_lockdown'", (new_status_str,))
+        else:
+            cur.execute("INSERT INTO system_config (key_name, value_data) VALUES ('system_lockdown', %s)", (new_status_str,))
+            
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success', 
+            'lockdown_active': new_status
+        }), 200
+        
+    except Exception as e:
+        print(f"Error toggling lockdown: {e}")
+        return jsonify({'message': f'Error toggling lockdown: {str(e)}'}), 500
+
     
 # Main Security Dashboard Data Endpoint
 @app.route('/api/admin/security-data', methods=['GET'])
@@ -734,24 +773,29 @@ def api_security_dashboard_data(user_id, role):
         
         cur = conn.cursor()
 
-        # 1. Admin Info
+        # Check Lockdown Status
+        cur.execute("SELECT value_data FROM system_config WHERE key_name = 'system_lockdown'")
+        row_lockdown = cur.fetchone()
+        system_lockdown = row_lockdown['value_data'] == 'true' if row_lockdown else False
+
+        # Admin Info
         cur.execute('SELECT name FROM users WHERE id = %s', (user_id,))
         user_row = cur.fetchone()
         admin_name = user_row['name'] if user_row else "Admin"
 
-        # 2. Time Threshold (24h)
+        # Time Threshold (24h)
         yesterday_obj = datetime.now() - timedelta(days=1)
         yesterday_str = yesterday_obj.strftime("%Y-%m-%d %H:%M:%S")
 
-        # 3. Blocked Counters (Raw count of ALL blocked attempts in 24h)
+        # Blocked Counters (Raw count of ALL blocked attempts in 24h)
         cur.execute("SELECT COUNT(*) as blocked FROM logs WHERE entry_allowed = 0 AND access_time >= %s", (yesterday_str,))
         row = cur.fetchone()
         blocked_24h = row['blocked'] if row else 0
 
         # --- SMART LOGIC STARTS HERE ---
         
-        # 4. Fetch logs for analysis
-        # Strategy: Get ALL logs from last 24h OR any older logs that are still threats and unreviewed
+        # Fetch logs for analysis
+        # Get ALL logs from last 24h OR any older logs that are still threats and unreviewed
         # This ensures active threats don't disappear just because 24h passed.
         cur.execute("""
             SELECT id, user_id, role, area, access_time, entry_allowed, reason, error_code, is_threat, is_reviewed 
@@ -781,8 +825,8 @@ def api_security_dashboard_data(user_id, role):
             reason_text = log_dict.get('reason', '') or ''
             error_code = log_dict.get('error_code') or 'UNKNOWN'
             u_id = log_dict.get('user_id', 'Unknown')
-            is_threat = log_dict.get('is_threat') # Boolean from DB
-            is_reviewed = log_dict.get('is_reviewed') # Boolean from DB
+            is_threat = log_dict.get('is_threat')
+            is_reviewed = log_dict.get('is_reviewed')
             
             # Base Score
             score = RISK_SCORES.get(error_code, 1)
@@ -850,6 +894,7 @@ def api_security_dashboard_data(user_id, role):
 
         response_data = {
             'admin_name': admin_name,
+            'system_lockdown': system_lockdown,
             'stats': {
                 'active_threats': len(active_threats_set),
                 'blocked_attempts_24h': blocked_24h,

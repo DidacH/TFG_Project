@@ -80,7 +80,6 @@ def load_rules_from_db():
 
 def verify_qr(content, secret_key, target_area):
     now = int(time.time())
-    expiration_seconds = 30  #seconds
     current_dt = datetime.fromtimestamp(now)
     time_str = current_dt.strftime('%Y-%m-%d %H:%M:%S')
     
@@ -97,6 +96,7 @@ def verify_qr(content, secret_key, target_area):
             'access_time': time_str
         }
 
+    # Verify signature
     message = f"{user_id}:{timestamp}"
     expected_signature = hmac.new(secret_key, message.encode(), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(received_signature, expected_signature):
@@ -109,7 +109,7 @@ def verify_qr(content, secret_key, target_area):
             'access_time': time_str
         }
 
-    #Fetch user info if signature valid
+    # Check user role
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("SELECT role FROM users WHERE id = %s", (user_id,))
@@ -129,6 +129,24 @@ def verify_qr(content, secret_key, target_area):
 
     role = user[0]
 
+    # GLOBAL LOCKDOWN CHECK
+    load_rules_from_db()
+    is_locked = _CONFIG_CACHE.get('system_lockdown', False)
+    
+    if is_locked:
+        # Exception: Admins can bypass lockdown
+        if role != 'Admin':
+            return {
+                'valid': False, 
+                'error_code': 'SYSTEM_LOCKDOWN', 
+                'reason': 'Access Denied: System in Lockdown Mode', 
+                'user_id': user_id, 
+                'role': role, 
+                'access_time': time_str
+            }
+
+    # Check expiration
+    expiration_seconds = 30  #seconds
     grace_period = 5  #seconds, for clock skew
     if now - timestamp > expiration_seconds+grace_period:
         return {

@@ -297,6 +297,24 @@ def select_roles():
     conn.close()
     return rows
 
+def select_access_rules():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM access_rules')
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return rows
+
+def select_system_config():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM system_config')
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return rows
+
 
 if __name__ == "__main__":
 
@@ -309,12 +327,16 @@ if __name__ == "__main__":
     # init_roles_table()
     # init_users_table()
     # init_logs_table()
+    # init_access_rules_table()
+    # init_system_config_table()
+    # init_alert_rules_table()
     # print("Database initialized.")
 
     # print(select_logs())
-    # print(select_logs())
     # print(select_users())
     # print(select_roles())
+    # print(select_access_rules())
+    # print(select_system_config())
     
 
     get_all_table_names()
