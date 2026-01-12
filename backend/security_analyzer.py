@@ -225,7 +225,6 @@ def send_anomaly_alert(log_entry, score):
         msg = MIMEMultipart()
         msg['From'] = SMTP_EMAIL
         msg['Subject'] = subject
-        # We send hidden to multiple admins
         msg['To'] = SMTP_EMAIL 
         
         msg.attach(MIMEText(body_html, 'html'))
@@ -240,7 +239,6 @@ def send_anomaly_alert(log_entry, score):
         server.sendmail(SMTP_EMAIL, admin_emails, text)
         
         server.quit()
-        print(f"✅ Alert correctly sent to {len(admin_emails)} administrators.")
         
     except Exception as e:
         print(f"❌ Error sending email via Gmail: {e}")
@@ -280,7 +278,6 @@ def send_access_denied_alert(log_entry):
         msg = MIMEMultipart()
         msg['From'] = SMTP_EMAIL
         msg['Subject'] = subject
-        # We send hidden to multiple admins
         msg['To'] = SMTP_EMAIL 
         
         msg.attach(MIMEText(body_html, 'html'))
@@ -295,7 +292,6 @@ def send_access_denied_alert(log_entry):
         server.sendmail(SMTP_EMAIL, admin_emails, text)
         
         server.quit()
-        print(f"✅ Alert correctly sent to {len(admin_emails)} administrators.")
         
     except Exception as e:
         print(f"❌ Error sending email via Gmail: {e}")
@@ -322,67 +318,3 @@ def fetch_all_logs():
     
     # Convert results to DataFrame
     return pd.DataFrame(logs)
-
-
-def batch_analysis_deep_dive():
-    """
-    Perform a deeper analysis of the logs. To be done daily or weekly.
-    """
-    df_logs = fetch_all_logs()
-    if df_logs.empty:
-        print("No logs available for deep dive analysis.")
-        return
-    
-    df_logs['access_time'] = pd.to_datetime(df_logs['access_time'])
-    df_logs = preprocess_data(df_logs.copy())
-
-    # 1. Detection of various anomaly patterns: 
-    # (Ex: user that only accesses room_1, but suddenly accesses room_5 at 3 AM)
-    X_logs = df_logs[FEATURE_COLUMNS]
-    df_logs['deep_anomaly_score'] = model.decision_function(X_logs)
-    
-    # 2. Time-based Abuse Detection:
-
-    # Calculates the elapsed time (in seconds) since the last access of each user
-    df_logs['time_diff'] = df_logs.groupby('user_id')['access_time'].diff().dt.total_seconds().fillna(0)
-    
-    # Identify accesses that are too close in time
-    # ABUSE_THRESHOLD: Less than 1 minute between same user's accesses
-    df_logs['is_time_abuse'] = (df_logs['time_diff'] > 0) & (df_logs['time_diff'] < 60)
-    
-    # 3. Detection of False Positives from QR_Scanner: 
-    # (Ex: Logs with expired QR, but with a temporally normal pattern)
-    
-    # Logs that have been labeled as 'expired' (by QR validator) but 
-    # the AI model marked them as 'Normal' (Score > -0.15) in real-time analysis.
-    false_positives = df_logs[
-        (df_logs['reason'].str.contains('expired') & 
-         df_logs['deep_anomaly_score'] > ANOMALY_THRESHOLD)
-    ]
-
-    # --- Report Generation ---
-    report = {
-        'total_logs': len(df_logs),
-        'anomalous_logs': df_logs[df_logs['deep_anomaly_score'] < ANOMALY_THRESHOLD].shape[0],
-        'time_abuse_incidents': df_logs[df_logs['is_time_abuse']].shape[0],
-        'potential_false_positives': false_positives.shape[0]
-    }
-
-    print("\n--- DEEP DIVE BATCH ANALYSIS REPORT ---")
-    for key, value in report.items():
-        print(f"{key}: {value}")
-        
-    if report['potential_false_positives'] > 0:
-        print("\nPotential False Positives (Needs Admin Review to Mark as Safe):")
-        print(false_positives[['user_id', 'email', 'access_time', 'reason', 'deep_anomaly_score']].head())
-    
-    if report['time_abuse_incidents'] > 0:
-        print("\nPossible Time Abuse Incidents:")
-        print(df_logs[df_logs['is_time_abuse']][['user_id', 'email', 'access_time', 'time_diff']].head())
-
-    # AFEGIR: Lògica per enviar un correu amb el Report d'Anàlisi Global
-
-
-
-# To run the deep dive analysis:
-# batch_analysis_deep_dive()

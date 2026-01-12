@@ -35,47 +35,54 @@ def load_rules_from_db():
     
     current_time = time.time()
     
-    # Don't reload if cache is still valid
-    if _RULES_CACHE is not None and (current_time - _LAST_CACHE_UPDATE < CACHE_TTL):
+    # Don't reload if cache is still valid and not empty
+    if _RULES_CACHE and _CONFIG_CACHE and (current_time - _LAST_CACHE_UPDATE < CACHE_TTL):
         return
 
-    # if cache is stale or empty, reload from DB
     try:
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # Load access rules
+        # Load Access Rules
         cur.execute("SELECT role, allowed_area FROM access_rules")
-        rows = cur.fetchall()
+        rules = cur.fetchall()
         
-        new_rules = {}
-        for role, area in rows:
-            if role not in new_rules:
-                new_rules[role] = []
-            new_rules[role].append(area)
+        temp_rules = {}
+        for role, area in rules:
+            if role not in temp_rules:
+                temp_rules[role] = []
+            temp_rules[role].append(area)
             
-        _RULES_CACHE = new_rules
         
-        # Load system config
-        cur.execute("SELECT value_data FROM system_config WHERE key_name = 'closed_hours'")
-        result = cur.fetchone()
+        # Load System Config (e.g., closed hours, lockdown status)
+        cur.execute("SELECT key_name, value_data FROM system_config")
+        configs = cur.fetchall()
         
-        if result:
-            # Convert string to list of integers
-            _CONFIG_CACHE = [int(h) for h in result[0].split(',')]
-        else:
-            _CONFIG_CACHE = []
-            
+        temp_config = {}
+        # Parse closed hours
+        for key, value in configs:
+            if key == 'closed_hours':
+                try:
+                    temp_config['closed_hours'] = [int(h) for h in value.split(',')]
+                except:
+                    temp_config['closed_hours'] = []
+            elif key == 'system_lockdown':
+                temp_config['system_lockdown'] = (value == 'true')
+            else:
+                temp_config[key] = value
+                
+        _RULES_CACHE = temp_rules
+        _CONFIG_CACHE = temp_config
         _LAST_CACHE_UPDATE = current_time
+        
         cur.close()
         conn.close()
         
     except Exception as e:
-        print(f"Error while reading DB rules: {e}")
-        # If BDD read fails, keep existing cache if any
-        if _RULES_CACHE is None:
-            _RULES_CACHE = {}
-            _CONFIG_CACHE = []
+        print(f"Error loading rules from DB: {e}")
+        # If DB fails, keep old cache or empty if first run
+        if _RULES_CACHE is None: _RULES_CACHE = {}
+        if _CONFIG_CACHE is None: _CONFIG_CACHE = {}
 
 
 def verify_qr(content, secret_key, target_area):
@@ -139,7 +146,7 @@ def verify_qr(content, secret_key, target_area):
             return {
                 'valid': False, 
                 'error_code': 'SYSTEM_LOCKDOWN', 
-                'reason': 'Access Denied: System in Lockdown Mode', 
+                'reason': 'System in Lockdown Mode', 
                 'user_id': user_id, 
                 'role': role, 
                 'access_time': time_str

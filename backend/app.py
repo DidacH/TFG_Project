@@ -14,6 +14,10 @@ from dotenv import load_dotenv
 import os
 import re
 from functools import wraps
+from security_analyzer import get_admin_emails
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 load_dotenv()  #Load environment variables from .env file
 
@@ -32,6 +36,9 @@ app.config.update(
 app.secret_key = os.getenv("SECRET_KEY")
 ADMIN_REGISTRATION_KEY = os.getenv("ADMIN_KEY")
 SIGNATURE_KEY = os.getenv("SIGNATURE_KEY").encode('utf-8')
+
+SMTP_EMAIL= os.getenv("SMTP_EMAIL")
+SMTP_PASSWORD= os.getenv("SMTP_PASSWORD")
 
 
 
@@ -575,50 +582,13 @@ def manage_alert_rules():
         return jsonify({'status': 'deleted'})
     
 
-# Risk Score Map
-RISK_SCORES = {
-    'FORGED_QR': 10,     # Hack attempt / Security breach
-    'MALFORMED_QR': 10,  # Fuzzing / Hack attempt
-    'UNKNOWN_USER': 5,   # Potential brute force or deleted user access
-    'AREA_VIOLATION': 3, # Unauthorized internal access (Policy)
-    'TIME_VIOLATION': 1, # Process issue
-    'EXPIRED_QR': 1,     # Usability issue
-    'UNKNOWN': 1
-}
-
 # Critical Threshold: Above this risk score, system is "Critical" (default to 10)
 CRITICAL_THRESHOLD = 10
 
 # Configurable Threshold: How many low-severity errors constitute a threat? (default to 3)
 REPETITION_THRESHOLD = 3 
 
-# Helper to automatically review old non-threatening logs
-def auto_review_old_logs(conn):
-    """
-    Automatically marks as 'reviewed' (resolved) logs that are:
-    1. Older than 24h
-    2. Marked as NOT a threat (is_threat = FALSE)
-    3. Currently unreviewed
-    """
-    try:
-        cur = conn.cursor()
-        yesterday_obj = datetime.now() - timedelta(days=1)
-        yesterday_str = yesterday_obj.strftime("%Y-%m-%d %H:%M:%S")
-        
-        cur.execute("""
-            UPDATE logs 
-            SET is_reviewed = TRUE 
-            WHERE access_time < %s 
-            AND is_threat = FALSE 
-            AND is_reviewed = FALSE
-        """, (yesterday_str,))
-        
-        conn.commit()
-        cur.close()
-    except Exception as e:
-        print(f"Error in auto-review job: {e}")
-
-# NEW ENDPOINT: Toggle Threat Status
+# Toggle Threat Status
 @app.route('/api/admin/log/<int:log_id>/toggle-threat', methods=['POST'])
 @token_required
 @admin_required
@@ -639,7 +609,7 @@ def toggle_threat_status(user_id, role, log_id):
         current_threat_status = log['is_threat']
         current_review_status = log['is_reviewed']
         
-        # 2. DETERMINE TARGET STATE (FIXED LOGIC)
+        # DETERMINE TARGET STATE
         # We assume if it's PENDING (Threat & Not Reviewed), we want to make it SAFE.
         # If it's anything else (Safe or Reviewed Threat), we want to make it ACTIVE THREAT.
         
@@ -654,7 +624,7 @@ def toggle_threat_status(user_id, role, log_id):
             new_threat_status = True
             new_review_status = False
         
-        # 3. Apply to ALL related logs (Same User + Same Error Code)
+        # Apply to ALL related logs (Same User + Same Error Code)
         cur.execute("""
             UPDATE logs 
             SET is_threat = %s, is_reviewed = %s
@@ -676,7 +646,7 @@ def toggle_threat_status(user_id, role, log_id):
     except Exception as e:
         return jsonify({'message': f'Error toggling status: {str(e)}'}), 500
 
-# NEW ENDPOINT: Mark as Reviewed
+# Mark as Reviewed Endpoint
 @app.route('/api/admin/log/<int:log_id>/review', methods=['POST'])
 @token_required
 @admin_required
@@ -685,7 +655,7 @@ def toggle_review_status(user_id, role, log_id):
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # 1. Get current status
+        # Get current status
         cur.execute("SELECT user_id, error_code, is_reviewed FROM logs WHERE id = %s", (log_id,))
         log = cur.fetchone()
         
@@ -698,8 +668,7 @@ def toggle_review_status(user_id, role, log_id):
         # We don't support "unreviewing" via this specific button logic for now based on your request
         new_review_status = True
         
-        # 3. Batch update similar logs
-        # REMOVED 24h constraint
+        # Batch update similar logs
         
         cur.execute("""
             UPDATE logs 
@@ -731,7 +700,6 @@ def toggle_system_lockdown(user_id, role):
         cur = conn.cursor()
         
         # Check current status in system_config table
-        # We use a key-value store approach for system-wide settings
         cur.execute("SELECT value_data FROM system_config WHERE key_name = 'system_lockdown'")
         row = cur.fetchone()
         
@@ -749,6 +717,12 @@ def toggle_system_lockdown(user_id, role):
         conn.commit()
         cur.close()
         conn.close()
+
+        # Send email notification to all admins
+        try:
+            send_lockdown_email(new_status)
+        except Exception as email_err:
+            print(f"Warning: Could not send lockdown email: {email_err}")
         
         return jsonify({
             'status': 'success', 
@@ -758,6 +732,20 @@ def toggle_system_lockdown(user_id, role):
     except Exception as e:
         print(f"Error toggling lockdown: {e}")
         return jsonify({'message': f'Error toggling lockdown: {str(e)}'}), 500
+    
+
+SESSION_TIMEOUT_MINUTES = 10 #Time window to group logs of the same user
+# Risk Score Map
+RISK_SCORES = {
+    'FORGED_QR': 10,     # Hack attempt / Security breach
+    'MALFORMED_QR': 10,  # Fuzzing / Hack attempt
+    'SYSTEM_LOCKDOWN': 10, # Serious incident when lockdown is active and access is attempted
+    'UNKNOWN_USER': 5,   # Potential brute force or deleted user access
+    'AREA_VIOLATION': 3, # Unauthorized internal access (Policy)
+    'TIME_VIOLATION': 1, # Process issue
+    'EXPIRED_QR': 1,     # Usability issue
+    'UNKNOWN': 1
+}
 
     
 # Main Security Dashboard Data Endpoint
@@ -768,7 +756,7 @@ def api_security_dashboard_data(user_id, role):
     try:
         conn = get_db_connection()
         
-        # 0. HOUSEKEEPING: Auto-review old safe logs
+        # HOUSEKEEPING: Auto-review old safe logs
         auto_review_old_logs(conn)
         
         cur = conn.cursor()
@@ -807,108 +795,236 @@ def api_security_dashboard_data(user_id, role):
         
         all_logs = cur.fetchall()
         
-        # Analyze Repetitions for logs without explicit status yet
-        user_failure_counts = {}
-        for log in all_logs:
-            u_id = log['user_id'] if isinstance(log, dict) or hasattr(log, 'keys') else log[1]
-            if u_id not in user_failure_counts:
-                user_failure_counts[u_id] = 0
-            user_failure_counts[u_id] += 1
+        # --- TEMPORAL CLUSTERING ---
+        
+        incidents = []
+        
+        # We need to group logs that belong to the same "session" of errors.
+        # Key for grouping: (user_id, error_code)
+        # Constraint: Time difference < SESSION_TIMEOUT_MINUTES
+        
+        if all_logs:
+            # Initialize the first cluster with the first log
+            current_cluster = {
+                'logs': [dict(all_logs[0])],
+                'user_id': all_logs[0]['user_id'],
+                'error_code': all_logs[0]['error_code'],
+                'last_time': all_logs[0]['access_time'] # Most recent time in this cluster
+            }
+            
+            # Iterate starting from the second log
+            for i in range(1, len(all_logs)):
+                log = dict(all_logs[i])
+                
+                # Check parsing of timestamp (DB drivers sometimes return str, sometimes datetime)
+                log_time = log['access_time']
+                if isinstance(log_time, str):
+                    log_time = datetime.strptime(log_time, "%Y-%m-%d %H:%M:%S")
+                
+                prev_time = current_cluster['last_time']
+                if isinstance(prev_time, str):
+                    prev_time = datetime.strptime(prev_time, "%Y-%m-%d %H:%M:%S")
 
-        # Process Logs & Calculate Metrics
+                # Calculate time difference
+                time_diff = prev_time - log_time
+                
+                is_same_user = log['user_id'] == current_cluster['user_id']
+                is_same_error = log['error_code'] == current_cluster['error_code']
+                is_within_window = time_diff < timedelta(minutes=SESSION_TIMEOUT_MINUTES)
+                
+                if is_same_user and is_same_error and is_within_window:
+                    # Add to current cluster
+                    current_cluster['logs'].append(log)
+                else:
+                    # Seal the previous cluster and start a new one
+                    incidents.append(current_cluster)
+                    current_cluster = {
+                        'logs': [log],
+                        'user_id': log['user_id'],
+                        'error_code': log['error_code'],
+                        'last_time': log['access_time']
+                    }
+            
+            # Append the final cluster
+            incidents.append(current_cluster)
+
+        # --- RISK ANALYSIS ON CLUSTERS ---
+        
         total_risk_score = 0
         active_threats_set = set()
-        recent_incidents = []
+        recent_incidents_response = []
         
-        for i, log in enumerate(all_logs):
-            log_dict = dict(log)
-            reason_text = log_dict.get('reason', '') or ''
-            error_code = log_dict.get('error_code') or 'UNKNOWN'
-            u_id = log_dict.get('user_id', 'Unknown')
-            is_threat = log_dict.get('is_threat')
-            is_reviewed = log_dict.get('is_reviewed')
+        for incident in incidents:
+            logs_in_group = incident['logs']
+            count = len(logs_in_group)
+            representative_log = logs_in_group[0] # The most recent one
             
-            # Base Score
-            score = RISK_SCORES.get(error_code, 1)
+            u_id = representative_log['user_id']
+            error_code = representative_log['error_code']
+            reason = representative_log['reason']
             
-            # Determine Severity
+            # Calculate Base Score
+            base_score = RISK_SCORES.get(error_code, 1)
+            
+            # Calculate Severity based on repetition within the short time window
             severity = 'low'
-            if score >= 10: severity = 'high'
-            elif score >= 3: severity = 'medium'
+            if base_score >= 10: 
+                severity = 'high'
+            elif base_score >= 3: 
+                severity = 'medium'
             
-            # --- STATUS DETERMINATION LOGIC ---
-            
-            # Initialization logic for logs that have never been processed (NULL in DB)
-            if is_threat is None:
-                is_repeated = user_failure_counts.get(u_id, 0) >= REPETITION_THRESHOLD
-                # Calculate initial threat status
-                calculated_is_threat = (severity == 'high' or severity == 'medium' or is_repeated)
-                
-                # PERSIST THIS CALCULATION TO DB so it sticks!
-                # We do this lazily here or could do it in a background job
-                # For simplicity, we just use the calculated value for display now
-                is_threat = calculated_is_threat
-            
-            if is_reviewed is None:
-                is_reviewed = False
+            # Escalation logic: Brute force detection
+            if count >= 3 and severity == 'low':
+                severity = 'medium'
+            if count >= 5:
+                severity = 'high'
 
-            # Determine Frontend Status ('pending' = Active Threat that needs review)
-            if is_threat and not is_reviewed:
+            # Determine Threat Status
+            # Check if ANY log in this group is marked as unreviewed threat in DB
+            # OR if our calculated severity is high
+            
+            db_is_threat = any(l.get('is_threat') for l in logs_in_group)
+            db_is_reviewed = all(l.get('is_reviewed') for l in logs_in_group) # Only resolved if ALL are reviewed
+            
+            is_active_threat = False
+            
+            if not db_is_reviewed:
+                if db_is_threat or severity in ['high', 'medium']:
+                    is_active_threat = True
+
+            if is_active_threat:
                 status = 'pending'
                 active_threats_set.add(u_id)
-                total_risk_score += score # Only count active threats towards risk score
+                # Add score based on severity, not just base score
+                group_score = base_score * (2 if severity == 'high' else 1)
+                total_risk_score += group_score
             else:
-                status = 'resolved' 
-            
-            # Add to list (Limit to 10 for display)
-            # Only show 'resolved' logs if they are recent (<24h)
-            log_time_str = str(log_dict.get('access_time', ''))
-            is_recent = log_time_str >= yesterday_str
-            
-            if (status == 'pending' or is_recent) and len(recent_incidents) < 10:
-                display_type = reason_text
-                # Add context if it's a repetition threat
-                if is_threat and severity == 'low':
-                     display_type = f"{reason_text} (Repeated {user_failure_counts.get(u_id)}x)"
+                status = 'resolved'
 
-                recent_incidents.append({
-                    'id': str(log_dict.get('id', i)),
+            # Add to Response List
+            # Only show if it's pending OR recent (< 24h)
+            incident_time_str = str(incident['last_time'])
+            is_recent = incident_time_str >= yesterday_str
+
+            if (status == 'pending' or is_recent) and len(recent_incidents_response) < 20:
+                display_type = reason
+                if count > 1:
+                    display_type = f"{reason} ({count} attempts in 10min)"
+                
+                recent_incidents_response.append({
+                    'id': representative_log['id'], # Use ID of the latest log in group
                     'severity': severity,
-                    'type': display_type, 
+                    'type': display_type,
                     'description': error_code,
-                    'source_id': u_id, 
-                    'timestamp': log_time_str,
-                    'status': status 
+                    'source_id': u_id,
+                    'timestamp': incident_time_str,
+                    'status': status,
+                    'count': count
                 })
 
-        # System Health
-        if total_risk_score == 0:
-            system_health = 'Good'
-        elif total_risk_score < CRITICAL_THRESHOLD: 
-            system_health = 'Warning'
-        else:
-            system_health = 'Critical'
+        # Sort incidents by time DESC before sending
+        recent_incidents_response.sort(key=lambda x: x['timestamp'], reverse=True)
+        # Limit to top 10 after sorting
+        recent_incidents_response = recent_incidents_response[:10]
 
-        cur.close()
-        conn.close()
-
-        response_data = {
+        
+        return jsonify({
             'admin_name': admin_name,
             'system_lockdown': system_lockdown,
             'stats': {
                 'active_threats': len(active_threats_set),
                 'blocked_attempts_24h': blocked_24h,
-                'system_health': system_health,
+                'system_health': 'Critical' if total_risk_score > 50 else ('Warning' if total_risk_score > 0 else 'Good'),
                 'risk_score': total_risk_score
             },
-            'recent_incidents': recent_incidents
-        }
-
-        return jsonify(response_data), 200
+            'recent_incidents': recent_incidents_response
+        }), 200
 
     except Exception as e:
-        print(f"Error fetching security data: {e}")
-        return jsonify({'message': f'Internal server error: {str(e)}'}), 500
+        print(f"Error: {e}")
+        return jsonify({'error': str(e)}), 500
+    
+
+#=================================================
+# === HELPER FUNCTIONS ===
+#=================================================
+
+# Helper to automatically review old non-threatening logs
+def auto_review_old_logs(conn):
+    """
+    Automatically marks as 'reviewed' (resolved) logs that are:
+    1. Older than 24h
+    2. Marked as NOT a threat (is_threat = FALSE)
+    3. Currently unreviewed
+    """
+    try:
+        cur = conn.cursor()
+        yesterday_obj = datetime.now() - timedelta(days=1)
+        yesterday_str = yesterday_obj.strftime("%Y-%m-%d %H:%M:%S")
+        
+        cur.execute("""
+            UPDATE logs 
+            SET is_reviewed = TRUE 
+            WHERE access_time < %s 
+            AND is_threat = FALSE 
+            AND is_reviewed = FALSE
+        """, (yesterday_str,))
+        
+        conn.commit()
+        cur.close()
+    except Exception as e:
+        print(f"Error in auto-review job: {e}")
+
+
+def send_lockdown_email(active):
+    """Sends an email notification about lockdown status change."""
+    if not SMTP_EMAIL or not SMTP_PASSWORD:
+        print("Skipping email: Credentials not configured.")
+        return
+
+    admins = get_admin_emails()
+    if not admins:
+        return
+
+    subject = "⚠️🔒 SYSTEM LOCKDOWN ALERT 🔒⚠️" if active else "✅ System Lockdown Lifted"
+    
+    if active:
+        body = f"""
+        WARNING: SYSTEM LOCKDOWN INITIATED.
+        
+        This is an automated alert. The system has been placed in LOCKDOWN mode by an administrator.
+        
+        - All non-admin access is currently BLOCKED.
+        - Physical access control points will deny entry.
+        
+        Time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+        """
+    else:
+        body = f"""
+        System Lockdown has been LIFTED.
+        
+        Normal access control rules are now back in effect.
+        
+        Time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+        """
+
+    try:
+        # Create message
+        msg = MIMEMultipart()
+        msg['From'] = SMTP_EMAIL
+        msg['To'] = ", ".join(admins) # Send to all admins
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'plain'))
+
+        # Send via SMTP
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(SMTP_EMAIL, SMTP_PASSWORD)
+        server.sendmail(SMTP_EMAIL, admins, msg.as_string())
+        server.quit()
+        print(f"Lockdown email sent to {len(admins)} admins.")
+    except Exception as e:
+        print(f"Failed to send email: {e}")
 
 
 #=================================================
