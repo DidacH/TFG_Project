@@ -9,6 +9,8 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from psycopg2 import extras
 import pickle
+from datetime import datetime, timedelta
+import random
 
 # --- SMTP CONFIGURATION ---
 SMTP_EMAIL = os.getenv("SMTP_EMAIL")
@@ -42,19 +44,106 @@ def save_model_artifacts():
     print(f"Model and artifacts stored in {MODEL_FILE}")
 
 def _get_dataset_for_training():
-    #Example initial data for training the model
-    data = {
-        'user_id': ['u1', 'u2', 'u3', 'u4', 'u5'],
-        'email': ['u1@inst.edu', 'u2@inst.edu', 'a1@inst.edu', 'u4@inst.edu', 'u5@inst.edu'],
-        'role': ['Student', 'Professor', 'Admin', 'Student', 'Staff'],
-        'area': ['area_1', 'area_2', 'area_3', 'area_1', 'area_2'],
-        'access_time': [
-            '2025-10-10 09:00:00', '2025-10-10 10:30:00', '2025-10-10 11:00:00',
-            '2025-10-10 20:00:00', '2025-10-11 08:00:00'
-        ]
+    """
+    Generate a synthetic dataset with example user's normal behaviour to train the model.
+    """
+    
+    NUM_SAMPLES = 1000
+    start_date = datetime.now() - timedelta(days=60) # Last 2 months
+    
+    data = []
+
+    # Definitions of roles and accesses
+    
+    roles_config = {
+        'Student': {
+            'areas': ['area_1', 'area_4', 'area_cafeteria'],
+            'weights': [0.6, 0.3, 0.1], 
+            'hours_mean': 11,
+            'hours_std': 3,
+            'weekend_prob': 0.05
+        },
+        'Professor': {
+            'areas': ['area_1', 'area_2', 'area_cafeteria'],
+            'weights': [0.4, 0.5, 0.1],
+            'hours_mean': 10,
+            'hours_std': 4, 
+            'weekend_prob': 0.02
+        },
+        'Admin': {
+            'areas': ['area_2', 'area_3'],
+            'weights': [0.7, 0.3],
+            'hours_mean': 9,
+            'hours_std': 2,
+            'weekend_prob': 0.01
+        },
+        'Staff': {
+            'areas': ['area_1', 'area_2', 'area_3', 'area_4', 'area_5'],
+            'weights': [0.2, 0.2, 0.2, 0.2, 0.2],
+            'hours_mean': 16,
+            'hours_std': 4,
+            'weekend_prob': 0.2
+        }
     }
+
+    user_pool = {
+        'Student': [f'student_{i}@univ.edu' for i in range(1, 50)],
+        'Professor': [f'prof_{i}@univ.edu' for i in range(1, 10)],
+        'Admin': [f'admin_{i}@univ.edu' for i in range(1, 3)],
+        'Staff': [f'staff_{i}@univ.edu' for i in range(1, 5)]
+    }
+
+    for _ in range(NUM_SAMPLES):
+        # Choose role based on general distribution
+        role = random.choices(
+            ['Student', 'Professor', 'Admin', 'Staff'], 
+            weights=[0.7, 0.15, 0.05, 0.10]
+        )[0]
+        
+        config = roles_config[role]
+        
+        # Select user 
+        email = random.choice(user_pool[role])
+        user_id = email.split('@')[0]
+        
+        # Select area based on role probabilities
+        area = random.choices(config['areas'], weights=config['weights'])[0]
+        
+        # Generate timestamp
+        random_day = start_date + timedelta(days=random.randint(0, 60))
+        
+        # Adjust weekend access probability
+        if random_day.weekday() >= 5 and random.random() > config['weekend_prob']:
+            random_day -= timedelta(days=2)
+            
+        # Generate time of day
+        hour_offset = int(random.gauss(config['hours_mean'], config['hours_std']))
+        hour_offset = max(0, min(23, hour_offset)) # Limit 0-23h
+        
+        minute_offset = random.randint(0, 59)
+        access_time = random_day.replace(hour=hour_offset, minute=minute_offset, second=0)
+        
+        data.append({
+            'user_id': user_id,
+            'email': email,
+            'role': role,
+            'area': area,
+            'access_time': access_time
+        })
+
+    # Convert to DataFrame
     df = pd.DataFrame(data)
-    df['access_time'] = pd.to_datetime(df['access_time'])
+    
+    # Add some anomalies
+    anomalies = [
+        {'user_id': 'student_99', 'email': 'bad_student@univ.edu', 'role': 'Student', 'area': 'area_3', 'access_time': start_date.replace(hour=3, minute=0)},
+        {'user_id': 'admin_01', 'email': 'admin_1@univ.edu', 'role': 'Admin', 'area': 'area_1', 'access_time': start_date.replace(hour=23, minute=59)}, # Admin a classe a mitjanit
+    ]
+    df = pd.concat([df, pd.DataFrame(anomalies)], ignore_index=True)
+    
+    # Order by access_time
+    df = df.sort_values(by='access_time').reset_index(drop=True)
+    
     return df
 
 def preprocess_data(df):
@@ -99,10 +188,10 @@ def preprocess_data(df):
 
     return df
 
-def train_security_model():
+def train_security_model(dataset = _get_dataset_for_training()):
     """ Train the model using log data (Isolation Forest) """
     global model
-    df_train = _get_dataset_for_training()
+    df_train = dataset
     df_processed = preprocess_data(df_train)
     
     X_train = df_processed[FEATURE_COLUMNS]

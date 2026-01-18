@@ -744,6 +744,7 @@ RISK_SCORES = {
     'AREA_VIOLATION': 3, # Unauthorized internal access (Policy)
     'TIME_VIOLATION': 1, # Process issue
     'EXPIRED_QR': 1,     # Usability issue
+    'AI_ANOMALY': 8,     # Suspicious behavior detected by AI
     'UNKNOWN': 1
 }
 
@@ -786,10 +787,12 @@ def api_security_dashboard_data(user_id, role):
         # Get ALL logs from last 24h OR any older logs that are still threats and unreviewed
         # This ensures active threats don't disappear just because 24h passed.
         cur.execute("""
-            SELECT id, user_id, role, area, access_time, entry_allowed, reason, error_code, is_threat, is_reviewed 
+            SELECT id, user_id, role, area, access_time, entry_allowed, reason, error_code, is_threat, is_reviewed, is_anomaly 
             FROM logs 
-            WHERE entry_allowed = 0 
-            AND (access_time >= %s OR (is_threat = TRUE AND is_reviewed = FALSE))
+            WHERE 
+                (entry_allowed = 0 OR is_threat = TRUE OR is_anomaly = TRUE)
+            AND 
+                (access_time >= %s OR (is_threat = TRUE AND is_reviewed = FALSE) OR (is_anomaly = TRUE AND is_reviewed = FALSE))
             ORDER BY access_time DESC
         """, (yesterday_str,))
         
@@ -804,6 +807,22 @@ def api_security_dashboard_data(user_id, role):
         # Constraint: Time difference < SESSION_TIMEOUT_MINUTES
         
         if all_logs:
+
+            # Add AI flagged anomalies to the mix
+            cleaned_logs = []
+            for log in all_logs:
+                d_log = dict(log)
+
+                if d_log['is_anomaly'] and d_log['entry_allowed'] == 1:
+                    d_log['error_code'] = 'AI_ANOMALY'
+                    d_log['reason'] = 'Behavioral Anomaly Detected'
+                
+                # Fallback for None error codes
+                if not d_log.get('error_code'):
+                     d_log['error_code'] = 'UNKNOWN'
+                     
+                cleaned_logs.append(d_log)
+
             # Initialize the first cluster with the first log
             current_cluster = {
                 'logs': [dict(all_logs[0])],
@@ -883,21 +902,19 @@ def api_security_dashboard_data(user_id, role):
             # Check if ANY log in this group is marked as unreviewed threat in DB
             # OR if our calculated severity is high
             
-            db_is_threat = any(l.get('is_threat') for l in logs_in_group)
-            db_is_reviewed = all(l.get('is_reviewed') for l in logs_in_group) # Only resolved if ALL are reviewed
+            db_threat_flag = any(l.get('is_threat') for l in logs_in_group)
+            db_anomaly_flag = any(l.get('is_anomaly') for l in logs_in_group)
+            all_reviewed = all(l.get('is_reviewed') for l in logs_in_group)
             
-            is_active_threat = False
+            is_active = False
+            if not all_reviewed:
+                if db_threat_flag or db_anomaly_flag or severity in ['high', 'medium']:
+                    is_active = True
             
-            if not db_is_reviewed:
-                if db_is_threat or severity in ['high', 'medium']:
-                    is_active_threat = True
-
-            if is_active_threat:
+            if is_active:
                 status = 'pending'
                 active_threats_set.add(u_id)
-                # Add score based on severity, not just base score
-                group_score = base_score * (2 if severity == 'high' else 1)
-                total_risk_score += group_score
+                total_risk_score += base_score * count # Simple additive risk
             else:
                 status = 'resolved'
 
@@ -907,9 +924,12 @@ def api_security_dashboard_data(user_id, role):
             is_recent = incident_time_str >= yesterday_str
 
             if (status == 'pending' or is_recent) and len(recent_incidents_response) < 20:
+                 # Visual distinction for AI
                 display_type = reason
-                if count > 1:
-                    display_type = f"{reason} ({count} attempts in 10min)"
+                if error_code == 'AI_ANOMALY':
+                    display_type = f"🤖 AI Alert: {reason}"
+                elif count > 1:
+                    display_type = f"{reason} ({count} attempts in 10 min)"
                 
                 recent_incidents_response.append({
                     'id': representative_log['id'], # Use ID of the latest log in group
@@ -919,6 +939,7 @@ def api_security_dashboard_data(user_id, role):
                     'source_id': u_id,
                     'timestamp': incident_time_str,
                     'status': status,
+                    'is_ai': error_code == 'AI_ANOMALY',
                     'count': count
                 })
 
