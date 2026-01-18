@@ -67,7 +67,8 @@ def init_logs_table():
             error_code TEXT,
             risk_score FLOAT DEFAULT 0.0,
             is_reviewed BOOLEAN DEFAULT FALSE,
-            is_threat BOOLEAN DEFAULT FALSE
+            is_threat BOOLEAN DEFAULT FALSE,
+            is_anomaly BOOLEAN DEFAULT FALSE
         )
     ''')
     conn.commit()
@@ -315,6 +316,14 @@ def select_system_config():
     conn.close()
     return rows
 
+def make_last_log_anomaly():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('UPDATE logs SET is_anomaly = TRUE WHERE role = %s', ('Student',))
+    conn.commit()
+    cur.close()
+    conn.close()
+
 
 if __name__ == "__main__":
 
@@ -337,6 +346,7 @@ if __name__ == "__main__":
     # print(select_roles())
     # print(select_access_rules())
     # print(select_system_config())
+    make_last_log_anomaly()
     
 
     get_all_table_names()

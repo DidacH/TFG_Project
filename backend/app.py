@@ -825,15 +825,15 @@ def api_security_dashboard_data(user_id, role):
 
             # Initialize the first cluster with the first log
             current_cluster = {
-                'logs': [dict(all_logs[0])],
-                'user_id': all_logs[0]['user_id'],
-                'error_code': all_logs[0]['error_code'],
-                'last_time': all_logs[0]['access_time'] # Most recent time in this cluster
+                'logs': [dict(cleaned_logs[0])],
+                'user_id': cleaned_logs[0]['user_id'],
+                'error_code': cleaned_logs[0]['error_code'],
+                'last_time': cleaned_logs[0]['access_time'] # Most recent time in this cluster
             }
             
             # Iterate starting from the second log
-            for i in range(1, len(all_logs)):
-                log = dict(all_logs[i])
+            for i in range(1, len(cleaned_logs)):
+                log = dict(cleaned_logs[i])
                 
                 # Check parsing of timestamp (DB drivers sometimes return str, sometimes datetime)
                 log_time = log['access_time']
@@ -927,7 +927,7 @@ def api_security_dashboard_data(user_id, role):
                  # Visual distinction for AI
                 display_type = reason
                 if error_code == 'AI_ANOMALY':
-                    display_type = f"🤖 AI Alert: {reason}"
+                    display_type = f"AI Alert: {reason}"
                 elif count > 1:
                     display_type = f"{reason} ({count} attempts in 10 min)"
                 
@@ -962,8 +962,10 @@ def api_security_dashboard_data(user_id, role):
         }), 200
 
     except Exception as e:
-        print(f"Error: {e}")
-        return jsonify({'error': str(e)}), 500
+        import traceback
+        traceback.print_exc() # This will print the full error to your terminal
+        print(f"CRITICAL ERROR in security_dashboard: {e}")
+        return jsonify({'message': f'Internal Server Error: {str(e)}'}), 500
     
 
 #=================================================

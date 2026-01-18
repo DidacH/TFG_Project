@@ -12,6 +12,8 @@ import {
   Activity,
   Search,
   CheckCircle,
+  Bot,
+  Sparkles
 } from "lucide-react";
 import { cn } from "../components/ui/utils";
 
@@ -27,6 +29,7 @@ interface SecurityIncident {
   timestamp: string;
   description: string;
   status: 'resolved' | 'pending';
+  is_ai?: boolean;
 }
 
 interface SecurityStats {
@@ -285,7 +288,8 @@ export default function FrameSecurity() {
             if (response.status === 401 || response.status === 403) {
                 throw new Error('Unauthorized access.');
             }
-            throw new Error('Failed to fetch security data.');
+            const errorData = await response.json().catch(() => null);
+            throw new Error(errorData?.message || 'Failed to fetch security data.');
         }
         
         const json: SecurityData = await response.json();
@@ -483,18 +487,52 @@ export default function FrameSecurity() {
                                 {data?.recent_incidents && data.recent_incidents.length > 0 ? (
                                     <div className="divide-y divide-gray-100">
                                         {data.recent_incidents.map((incident) => (
-                                            <div key={incident.id} className={cn("p-4 md:p-5 flex flex-col md:flex-row md:items-center justify-between transition-colors", incident.status === 'pending' ? "bg-red-50/30 hover:bg-red-50/60" : "hover:bg-gray-50")}>
+                                            <div 
+                                                key={incident.id} 
+                                                className={cn(
+                                                    "p-4 md:p-5 flex flex-col md:flex-row md:items-center justify-between transition-colors", 
+                                                    // STYLES AI vs NORMAL
+                                                    incident.is_ai 
+                                                        ? incident.status === 'pending' 
+                                                            ? "bg-indigo-50/70 border-l-4 border-l-indigo-500" // AI Pending
+                                                            : "bg-indigo-50/20" // AI Resolved
+                                                        : incident.status === 'pending' 
+                                                            ? "bg-red-50/30 hover:bg-red-50/60" // Normal Pending
+                                                            : "hover:bg-gray-50" // Normal Resolved
+                                                )}
+                                            >
                                                 <div className="flex flex-col gap-1 mb-3 md:mb-0">
                                                     <div className="flex items-center gap-3">
-                                                        <span className={cn("px-2 py-1 rounded-md text-xs font-bold uppercase border", getSeverityColor(incident.severity))}>{incident.severity}</span>
-                                                        <span className={cn("font-medium", incident.status === 'pending' ? "text-red-900" : "text-gray-700")}>{incident.type}</span>
-                                                        {incident.status === 'pending' && <span className="flex items-center text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full animate-pulse"><AlertTriangle className="w-3 h-3 mr-1" /> Action Required</span>}
+                                                        
+                                                        {/* SEVERITY BADGE */}
+                                                        <span className={cn("px-2 py-1 rounded-md text-xs font-bold uppercase border", getSeverityColor(incident.severity))}>
+                                                            {incident.severity}
+                                                        </span>
+                                                        
+                                                        {/* TYPE TEXT + AI ICON */}
+                                                        <span className={cn("font-medium flex items-center gap-2", incident.status === 'pending' ? "text-red-900" : "text-gray-700")}>
+                                                            {incident.is_ai && <Bot className="w-5 h-5 text-indigo-600" />}
+                                                            {incident.type}
+                                                        </span>
+
+                                                        {/* STATUS BADGES */}
+                                                        {incident.status === 'pending' && !incident.is_ai && (
+                                                            <span className="flex items-center text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full animate-pulse">
+                                                                <AlertTriangle className="w-3 h-3 mr-1" /> Action Required
+                                                            </span>
+                                                        )}
+                                                        {incident.status === 'pending' && incident.is_ai && (
+                                                            <span className="flex items-center text-xs font-bold text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full border border-indigo-200">
+                                                                <Sparkles className="w-3 h-3 mr-1" /> AI Suspicion
+                                                            </span>
+                                                        )}
                                                     </div>
-                                                    <div className="text-sm text-gray-500 flex flex-wrap gap-x-4 gap-y-1 mt-1">
+
+                                                    <div className="text-sm text-gray-500 flex flex-wrap gap-x-4 gap-y-1 mt-1 pl-1">
                                                         <span>User: <span className="font-mono text-gray-700">{incident.source_id}</span></span>
                                                         <span className="hidden sm:inline">•</span>
                                                         <span>{incident.timestamp}</span>
-                                                        {incident.description !== incident.type && (
+                                                        {incident.description !== incident.type && !incident.type.includes(incident.description) && (
                                                             <>
                                                                 <span className="hidden sm:inline">•</span>
                                                                 <span className="italic text-gray-400">{incident.description}</span>
