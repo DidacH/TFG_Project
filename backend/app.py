@@ -19,13 +19,13 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-load_dotenv()  #Load environment variables from .env file
+load_dotenv()  # Load environment variables from .env file
 
 app = Flask(
     __name__,
 )
 
-CORS(app, supports_credentials=True) #Allow communication between frontend and backend
+CORS(app, supports_credentials=True) # Allow communication between frontend and backend
 
 app.config.update(
     SESSION_COOKIE_SECURE=True,
@@ -40,6 +40,7 @@ SIGNATURE_KEY = os.getenv("SIGNATURE_KEY").encode('utf-8')
 SMTP_EMAIL= os.getenv("SMTP_EMAIL")
 SMTP_PASSWORD= os.getenv("SMTP_PASSWORD")
 
+# Helper function to prevent response caching
 def no_cache(response):
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     response.headers['Pragma'] = 'no-cache'
@@ -47,34 +48,33 @@ def no_cache(response):
     return response
 
 
-
 #=================================================
 # === AUTHENTICATION DECORATORS ===
 #=================================================
 
-#JWT Authentication Decorator
-#This decorator checks for a valid JWT in the Authorization header
+# JWT Authentication Decorator
+# This decorator checks for a valid JWT in the Authorization header
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         token = None
-        #jwt is passed in the request header
+        # jwt is passed in the request header
         if 'Authorization' in request.headers:
             auth_header = request.headers['Authorization']
             try:
-                #Split 'Bearer <token>'
+                # Split 'Bearer <token>'
                 token = auth_header.split(" ")[1]
             except IndexError:
                 return jsonify({'message': 'Bearer token malformed'}), 401
 
-        #return 401 if token is not passed
+        # return 401 if token is not passed
         if not token:
             return jsonify({'message': 'Token is missing!'}), 401
 
         try:
-            #decoding the payload to fetch the stored details
+            # decoding the payload to fetch the stored details
             data = jwt.decode(token, app.secret_key, algorithms=["HS256"])
-            #Pass user_id and role to the decorated function
+            # Pass user_id and role to the decorated function
             kwargs['user_id'] = data['user_id']
             kwargs['role'] = data['role']
         except jwt.ExpiredSignatureError:
@@ -84,16 +84,16 @@ def token_required(f):
         except Exception as e:
              return jsonify({'message': f'Token error: {str(e)}'}), 401
 
-        #returns the current logged in users context to the routes
+        # returns the current logged in users context to the routes
         return f(*args, **kwargs)
 
     return decorated
 
-
+# Decorator to ensure the user has Admin privileges
 def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        # 'role' és injectat per @token_required
+        # 'role' is injected by @token_required
         if 'role' not in kwargs or kwargs['role'] != 'Admin':
             return jsonify({'message': 'Admin access required'}), 403
         return f(*args, **kwargs)
@@ -104,6 +104,7 @@ def admin_required(f):
 # === DATA FETCHING FUNCTIONS ===
 #=================================================
 
+# Fetches the 3 most recent access logs
 def get_last_3_logs():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -118,6 +119,7 @@ def get_last_3_logs():
     conn.close()
     return logs
 
+# Fetches the complete history of access logs
 def get_all_logs():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -131,6 +133,7 @@ def get_all_logs():
     conn.close()
     return logs
 
+# Fetches the 3 most recently registered users
 def get_last_3_users():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -140,6 +143,7 @@ def get_last_3_users():
     conn.close()
     return users
 
+# Fetches all registered users
 def get_all_users():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -154,17 +158,17 @@ def get_all_users():
 # === PUBLIC API ENDPOINTS ===
 #=================================================
 
-#Dynamic role fetching for registration
+# Dynamic role fetching for registration
 @app.route('/api/roles', methods=['GET'])
 def api_get_roles():
     """Obtain all available roles from database"""
     try:
-        roles = get_all_roles() #Fetch roles from database
+        roles = get_all_roles() # Fetch roles from database
         return jsonify(roles), 200
     except Exception as e:
         return jsonify({'message': f'Internal server error: {e}'}), 500
     
-
+# Checks if the password meets the minimum security requirements
 def validate_password(password):
     """Checks if the password meets the minimum security requirements."""
     if len(password) < 8:
@@ -179,7 +183,7 @@ def validate_password(password):
         return "Password must contain at least one special character (!@#$%^&*)."
     return None # No error
 
-#User registration endpoint
+# Handles user registration requests
 @app.route('/api/register', methods=['POST'])
 def api_register():
     data = request.get_json()
@@ -213,11 +217,11 @@ def api_register():
         save_user(user_id, name, email, password, role, qr_image, last_qr_time, registered_at)
 
         try:
-            #Create JWT token
+            # Create JWT token
             payload = {
                 'user_id': user_id,
                 'role': role,
-                'exp': datetime.now(timezone.utc) + timedelta(hours=1)  #Token expires in 1 hour
+                'exp': datetime.now(timezone.utc) + timedelta(hours=1)  # Token expires in 1 hour
             }
             token = jwt.encode(payload, app.secret_key, algorithm="HS256")
 
@@ -229,7 +233,7 @@ def api_register():
         return jsonify({'message': f'Internal server error: {e}'}), 500
 
 
-#User login endpoint
+# Handles user login and token generation
 @app.route('/api/login', methods=['POST'])
 def api_login():
     data = request.get_json()
@@ -245,11 +249,11 @@ def api_login():
         return jsonify({'message': 'Invalid credentials'}), 401
 
     try:
-        #Create JWT token
+        # Create JWT token
         payload = {
             'user_id': user['id'],
             'role': user['role'],
-            'exp': datetime.now(timezone.utc) + timedelta(hours=1)  #Token expires in 1 hour
+            'exp': datetime.now(timezone.utc) + timedelta(hours=1)  # Token expires in 1 hour
         }
         token = jwt.encode(payload, app.secret_key, algorithm="HS256")
 
@@ -262,15 +266,16 @@ def api_login():
 # === PROTECTED API ENDPOINTS (USER) ===
 #=================================================
 
-#API Endpoint for Dashboard Data
+# API Endpoint for Dashboard Data
+# Retrieves dashboard data for a specific user
 @app.route('/api/dashboard-data', methods=['GET'])
 @token_required
-def api_dashboard_data(user_id, role): #user_id and role are passed by the decorator
+def api_dashboard_data(user_id, role): # user_id and role are passed by the decorator
     try:
         conn = get_db_connection()
         cur = conn.cursor()
 
-        #Fetch user data
+        # Fetch user data
         cur.execute('SELECT name, email, role, qr_image, last_qr_time FROM users WHERE id = %s', (user_id,))
         user = cur.fetchone()
 
@@ -279,25 +284,25 @@ def api_dashboard_data(user_id, role): #user_id and role are passed by the decor
             conn.close()
             return jsonify({'message': 'User not found'}), 404
 
-        #Calculate remaining QR time
+        # Calculate remaining QR time
         last_qr_time = int(user['last_qr_time']) if user['last_qr_time'] else 0
-        qr_lifetime = 30 #seconds - should match frontend constant
+        qr_lifetime = 30 # seconds - should match frontend constant
         now = int(time.time())
         remaining = qr_lifetime - (now - last_qr_time)
         if remaining < 0:
-            remaining = 0 #Clamp at 0
+            remaining = 0 # Clamp at 0
 
-        #Convert QR image blob to base64
+        # Convert QR image blob to base64
         try:
             image = Image.open(BytesIO(user['qr_image']))
             buffer = BytesIO()
             image.save(buffer, format="PNG")
             qr_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
         except Exception as img_err:
-             print(f"Error processing QR image: {img_err}") #Log error
+             print(f"Error processing QR image: {img_err}") # Log error
              qr_base64 = None # Send null if image processing fails
 
-        #Fetch last successful access
+        # Fetch last successful access
         cur.execute('''
             SELECT access_time, area FROM logs
             WHERE user_id = %s AND entry_allowed = 1
@@ -306,7 +311,7 @@ def api_dashboard_data(user_id, role): #user_id and role are passed by the decor
         last_access_record = cur.fetchone()
         last_access_str = f"{last_access_record['access_time']} / {last_access_record['area']}" if last_access_record else None
 
-        #Fetch access history (successful accesses)
+        # Fetch access history (successful accesses)
         cur.execute('''
             SELECT access_time, area FROM logs
             WHERE user_id = %s AND entry_allowed = 1
@@ -318,7 +323,7 @@ def api_dashboard_data(user_id, role): #user_id and role are passed by the decor
         cur.close()
         conn.close()
 
-        #Prepare response data
+        # Prepare response data
         response_data = {
             'name': user['name'],
             'email': user['email'],
@@ -332,27 +337,28 @@ def api_dashboard_data(user_id, role): #user_id and role are passed by the decor
         return jsonify(response_data), 200
 
     except Exception as e:
-        #Log the exception e
-        print(f"Error fetching dashboard data: {e}") #Print error for debugging
-        #Close connection if it was opened and an error occurred
+        # Log the exception e
+        print(f"Error fetching dashboard data: {e}") # Print error for debugging
+        # Close connection if it was opened and an error occurred
         if 'conn' in locals() and conn:
             cur.close()
             conn.close()
         return jsonify({'message': f'Internal server error: {str(e)}'}), 500
 
 
-#API Endpoint to refresh QR code
+# API Endpoint to refresh QR code
+# Generates a new QR code for the user
 @app.route('/api/refresh-qr', methods=['GET'])
 @token_required
-def api_refresh_qr(user_id, role): #user_id and role are passed by the decorator
+def api_refresh_qr(user_id, role): # user_id and role are passed by the decorator
     try:
         conn = get_db_connection()
         cur = conn.cursor()
 
-        #Generate new QR
+        # Generate new QR
         new_qr_bytes, timestamp = generate_qr(user_id, SIGNATURE_KEY)
 
-        #Update database
+        # Update database
         cur.execute("UPDATE users SET qr_image = %s, last_qr_time = %s WHERE id = %s",
                    (new_qr_bytes, str(timestamp), user_id))
         conn.commit()
@@ -360,14 +366,14 @@ def api_refresh_qr(user_id, role): #user_id and role are passed by the decorator
         cur.close()
         conn.close()
 
-        #Convert new QR to base64 for response
+        # Convert new QR to base64 for response
         qr_base64 = base64.b64encode(new_qr_bytes).decode("utf-8")
 
         return jsonify({"qr_base64": qr_base64}), 200
 
     except Exception as e:
-        #Log the exception e
-        print(f"Error refreshing QR code: {e}") #Print error for debugging
+        # Log the exception e
+        print(f"Error refreshing QR code: {e}") # Print error for debugging
         if 'conn' in locals() and conn:
            cur.close()
            conn.close()
@@ -378,16 +384,17 @@ def api_refresh_qr(user_id, role): #user_id and role are passed by the decorator
 # === PROTECTED API ENDPOINTS (ADMIN) ===
 #=================================================
 
-#Endpoint for Admin Dashboard Data
+# Endpoint for Admin Dashboard Data
+# Retrieves data for the main admin dashboard
 @app.route('/api/admin/dashboard-data', methods=['GET'])
-@token_required #Check for valid token (user is logged in)
-@admin_required #Check if user is admin
+@token_required # Check for valid token (user is logged in)
+@admin_required # Check if user is admin
 def api_admin_dashboard(user_id, role):
     try:
         last_3_logs = get_last_3_logs()
         last_3_users = get_last_3_users()
         
-        #Obtain admin name
+        # Obtain admin name
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute('SELECT name FROM users WHERE id = %s', (user_id,))
@@ -396,7 +403,7 @@ def api_admin_dashboard(user_id, role):
         conn.close()
         admin_name = user['name'] if user else "Admin"
 
-        #Convert results (DictRow) to standard dicts for JSON serialization
+        # Convert results (DictRow) to standard dicts for JSON serialization
         return jsonify({
             'admin_name': admin_name,
             'last_3_logs': [dict(log) for log in last_3_logs],
@@ -407,7 +414,8 @@ def api_admin_dashboard(user_id, role):
         print(f"Error fetching admin dashboard data: {e}")
         return jsonify({'message': f'Internal server error: {str(e)}'}), 500
 
-#Endpoint to download logs table
+# Endpoint to download logs table
+# Generates a CSV file of all access logs
 @app.route('/api/admin/logs/download', methods=['GET'])
 @token_required
 @admin_required
@@ -447,7 +455,8 @@ def api_download_logs(user_id, role):
         return jsonify({'message': f'Internal server error: {str(e)}'}), 500
 
 
-#Endpoint to download users table
+# Endpoint to download users table
+# Generates a CSV file of all registered users
 @app.route('/api/admin/users/download', methods=['GET'])
 @token_required
 @admin_required
@@ -485,7 +494,7 @@ def api_download_users(user_id, role):
         print(f"Error downloading users: {e}")
         return jsonify({'message': f'Internal server error: {str(e)}'}), 500
     
-#Endpoint to render admin security dashboard    
+# Endpoint to render admin security dashboard
 @app.route('/api/admin/security')
 def security_dashboard():
     """Renders main security page."""
@@ -494,6 +503,7 @@ def security_dashboard():
 
 # --- SECURITY ENDPOINTS ---
 
+# Fetches logs flagged as suspicious based on risk score
 @app.route('/api/admin/logs/suspicious')
 def get_suspicious_logs():
     threshold = float(os.getenv('ANOMALY_THRESHOLD', -0.15))
@@ -513,6 +523,7 @@ def get_suspicious_logs():
              'time': str(r[4]), 'score': r[5], 'reason': r[6]} for r in logs]
     return jsonify(data)
 
+# Fetches logs where entry was denied
 @app.route('/api/admin/logs/denied')
 def get_denied_logs():
     conn = get_db_connection()
@@ -531,6 +542,7 @@ def get_denied_logs():
              'time': str(r[4]), 'reason': r[5]} for r in logs]
     return jsonify(data)
 
+# CRUD endpoint for managing access rules
 @app.route('/api/admin/rules/access', methods=['GET', 'POST', 'DELETE'])
 def manage_access_rules():
     conn = get_db_connection()
@@ -558,6 +570,7 @@ def manage_access_rules():
         conn.close()
         return jsonify({'status': 'deleted'})
 
+# CRUD endpoint for managing alert rules
 @app.route('/api/admin/rules/alerts', methods=['GET', 'POST', 'DELETE'])
 def manage_alert_rules():
     conn = get_db_connection()
@@ -593,6 +606,7 @@ CRITICAL_THRESHOLD = 10
 REPETITION_THRESHOLD = 3 
 
 # Toggle Threat Status
+# Toggles or sets the threat status of a log entry
 @app.route('/api/admin/log/<int:log_id>/toggle-threat', methods=['POST'])
 @token_required
 @admin_required
@@ -656,6 +670,7 @@ def toggle_threat_status(user_id, role, log_id):
         return jsonify({'message': f'Error toggling status: {str(e)}'}), 500
 
 # Mark as Reviewed Endpoint
+# Marks a specific log cluster as reviewed
 @app.route('/api/admin/log/<int:log_id>/review', methods=['POST'])
 @token_required
 @admin_required
@@ -687,6 +702,7 @@ def toggle_review_status(user_id, role, log_id):
 
 
 # Endpoint to toggle System Lockdown
+# Toggles the global system lockdown state
 @app.route('/api/admin/system-lockdown', methods=['POST'])
 @token_required
 @admin_required
@@ -733,7 +749,7 @@ def toggle_system_lockdown(user_id, role):
         return jsonify({'message': f'Error toggling lockdown: {str(e)}'}), 500
     
 
-SESSION_TIMEOUT_MINUTES = 10 #Time window to group logs of the same user
+SESSION_TIMEOUT_MINUTES = 10 # Time window to group logs of the same user
 # Risk Score Map
 RISK_SCORES = {
     'FORGED_QR': 10,     # Hack attempt / Security breach
@@ -749,6 +765,7 @@ RISK_SCORES = {
 
     
 # Main Security Dashboard Data Endpoint
+# Aggregates complex security data and stats for the admin security dashboard
 @app.route('/api/admin/security-data', methods=['GET'])
 @token_required
 @admin_required

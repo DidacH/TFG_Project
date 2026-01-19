@@ -13,8 +13,7 @@ import {
   Search,
   CheckCircle,
   Sparkles,
-  FileCheck,
-  XCircle
+  FileCheck
 } from "lucide-react";
 
 // --- Utility for classes ---
@@ -35,7 +34,7 @@ interface SecurityIncident {
   description: string;
   status: 'resolved' | 'pending';
   is_ai?: boolean;
-  is_threat: boolean; // Field to know the final verdict (Threat vs False Positive)
+  is_threat: boolean;
 }
 
 interface SecurityStats {
@@ -153,9 +152,7 @@ function SecurityActionToggle({ status, isThreat, onClick, isLoading, isDisabled
                     "p-2 rounded-full transition-all duration-200 border shadow-sm",
                     // Logic for button colors
                     isPending 
-                        // PENDING: Green hover (mark as safe action)
                         ? "bg-gray-50 border-gray-200 text-gray-400 hover:bg-green-50 hover:text-green-600 hover:border-green-200 hover:scale-105"
-                        // RESOLVED:
                         : isThreat
                             // WAS THREAT -> Downgrade (Green Hover)
                             ? "bg-white border-gray-200 text-gray-400 hover:bg-green-50 hover:text-green-600 hover:border-green-200"
@@ -170,7 +167,6 @@ function SecurityActionToggle({ status, isThreat, onClick, isLoading, isDisabled
                 ) : isPending ? (
                     <ShieldCheck className="w-5 h-5" /> 
                 ) : (
-                    // If resolved, generic shield or alert depending on context could be used, keeping Alert for consistency in "changing state"
                     <ShieldAlert className="w-5 h-5" />
                 )}
             </button>
@@ -366,7 +362,6 @@ export default function FrameSecurity() {
       if (incident.status === 'resolved') {
           action = incident.is_threat ? 'resolve' : 'escalate';
       } else {
-          // Pending items are escalated/active by definition, so toggling means resolving as safe
           action = 'resolve';
       }
 
@@ -396,8 +391,6 @@ export default function FrameSecurity() {
       setActionLoadingId(incident.id);
       const token = getToken();
       try {
-          // "Review" means "Acknowledged". 
-          // It stays a threat (if it was one) but becomes 'resolved' in status (archived).
           await fetch(`${API_URL}/api/admin/log/${incident.id}/review`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
           
           await new Promise(resolve => setTimeout(resolve, 300));
@@ -619,7 +612,7 @@ export default function FrameSecurity() {
                                                     {incident.status === 'pending' && <div className="h-6 w-px bg-gray-300"></div>}
                                                     <SecurityActionToggle 
                                                         status={incident.status} 
-                                                        isThreat={incident.is_threat} // Passem la info per al tooltip
+                                                        isThreat={incident.is_threat}
                                                         onClick={() => handleToggleThreat(incident)} 
                                                         isLoading={actionLoadingId === incident.id} 
                                                         isDisabled={isGlobalLoading} 
