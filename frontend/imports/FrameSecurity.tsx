@@ -12,12 +12,17 @@ import {
   Activity,
   Search,
   CheckCircle,
-  Bot,
-  Sparkles
+  Sparkles,
+  FileCheck,
+  XCircle
 } from "lucide-react";
-import { cn } from "../components/ui/utils";
 
-const API_URL = import.meta.env.VITE_API_URL || '';
+// --- Utility for classes ---
+function cn(...classes: (string | undefined | null | false)[]) {
+  return classes.filter(Boolean).join(" ");
+}
+
+const API_URL = '';
 
 // --- Interfaces ---
 
@@ -30,6 +35,7 @@ interface SecurityIncident {
   description: string;
   status: 'resolved' | 'pending';
   is_ai?: boolean;
+  is_threat: boolean; // Field to know the final verdict (Threat vs False Positive)
 }
 
 interface SecurityStats {
@@ -53,7 +59,7 @@ interface ActionButtonProps {
     children: React.ReactNode;
     variant?: 'primary' | 'secondary' | 'danger';
     isLoading?: boolean;
-    disabled?: boolean; // Added prop
+    disabled?: boolean;
     className?: string;
     icon?: React.ElementType;
 }
@@ -93,22 +99,34 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
     return <h2 className="text-2xl md:text-3xl font-semibold text-black text-left">{children}</h2>;
 }
 
-// Toggle Button: Handles "Mark Safe" (if pending) OR "Escalate to Threat" (if resolved)
+// Toggle Button (Shield)
 interface SecurityActionToggleProps {
     status: 'resolved' | 'pending';
+    isThreat: boolean;
     onClick: () => void;
-    isLoading?: boolean;     // Is this specific button loading?
-    isDisabled?: boolean;    // Is the UI blocked globally?
+    isLoading?: boolean;
+    isDisabled?: boolean;
 }
 
-function SecurityActionToggle({ status, onClick, isLoading, isDisabled }: SecurityActionToggleProps) {
+function SecurityActionToggle({ status, isThreat, onClick, isLoading, isDisabled }: SecurityActionToggleProps) {
     const [showTooltip, setShowTooltip] = useState(false);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
 
     const isPending = status === 'pending';
+    
+    // Tooltip logic based on state
+    // Pending: Mark as False Positive (Safe)
+    // Resolved & Threat: Downgrade to False Positive
+    // Resolved & Safe: Escalate back to Active Threat
+    
+    const tooltipText = isPending 
+        ? "Mark as False Positive (Safe)"
+        : isThreat 
+            ? "Downgrade to False Positive" 
+            : "Escalate to Active Threat";
 
     const handleMouseEnter = () => {
-        if (isDisabled || isLoading) return; // No tooltip if disabled
+        if (isDisabled || isLoading) return;
         if (timerRef.current) clearTimeout(timerRef.current);
         timerRef.current = setTimeout(() => setShowTooltip(true), 600);
     };
@@ -133,10 +151,18 @@ function SecurityActionToggle({ status, onClick, isLoading, isDisabled }: Securi
                 disabled={isDisabled || isLoading}
                 className={cn(
                     "p-2 rounded-full transition-all duration-200 border shadow-sm",
+                    // Logic for button colors
                     isPending 
-                        ? "bg-gray-50 border-gray-200 text-gray-400 hover:bg-green-50 hover:text-green-600 hover:border-green-200 hover:scale-105" 
-                        : "bg-green-50 border-green-200 text-green-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 hover:scale-105",
-                    (isDisabled || isLoading) && "opacity-50 cursor-not-allowed transform-none hover:scale-100 hover:bg-gray-50 hover:text-gray-400 hover:border-gray-200"
+                        // PENDING: Green hover (mark as safe action)
+                        ? "bg-gray-50 border-gray-200 text-gray-400 hover:bg-green-50 hover:text-green-600 hover:border-green-200 hover:scale-105"
+                        // RESOLVED:
+                        : isThreat
+                            // WAS THREAT -> Downgrade (Green Hover)
+                            ? "bg-white border-gray-200 text-gray-400 hover:bg-green-50 hover:text-green-600 hover:border-green-200"
+                            // WAS SAFE -> Escalate (Red Hover)
+                            : "bg-white border-gray-200 text-gray-400 hover:bg-red-50 hover:text-red-600 hover:border-red-200",
+                    
+                    (isDisabled || isLoading) && "opacity-50 cursor-not-allowed transform-none"
                 )}
             >
                 {isLoading ? (
@@ -144,25 +170,22 @@ function SecurityActionToggle({ status, onClick, isLoading, isDisabled }: Securi
                 ) : isPending ? (
                     <ShieldCheck className="w-5 h-5" /> 
                 ) : (
-                    <ShieldAlert className="w-5 h-5" /> 
+                    // If resolved, generic shield or alert depending on context could be used, keeping Alert for consistency in "changing state"
+                    <ShieldAlert className="w-5 h-5" />
                 )}
             </button>
 
             {showTooltip && !isDisabled && !isLoading && (
                 <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 w-48 bg-gray-800 text-white text-xs rounded-md py-1.5 px-3 z-50 animate-in fade-in zoom-in-95 duration-200 shadow-xl">
                     <div className="absolute right-[-4px] top-1/2 -translate-y-1/2 w-2 h-2 bg-gray-800 rotate-45"></div>
-                    <p className="font-medium relative z-10 text-center">
-                        {isPending 
-                            ? "Mark as False Positive (Safe)" 
-                            : "Escalate to Active Threat"}
-                    </p>
+                    <p className="font-medium relative z-10 text-center">{tooltipText}</p>
                 </div>
             )}
         </div>
     );
 }
 
-// Review Button: Mark as Reviewed (Only appears if Pending)
+// Review Button (Checkmark)
 interface ReviewButtonProps {
     onClick: () => void;
     isLoading?: boolean;
@@ -199,7 +222,7 @@ function ReviewButton({ onClick, isLoading, isDisabled }: ReviewButtonProps) {
                 disabled={isDisabled || isLoading}
                 className={cn(
                     "p-2 rounded-full transition-all duration-200 border shadow-sm bg-gray-50 border-gray-200 text-gray-400 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 hover:scale-105",
-                    (isDisabled || isLoading) && "opacity-50 cursor-not-allowed transform-none hover:bg-gray-50 hover:text-gray-400 hover:border-gray-200"
+                    (isDisabled || isLoading) && "opacity-50 cursor-not-allowed transform-none"
                 )}
             >
                 {isLoading ? (
@@ -213,12 +236,22 @@ function ReviewButton({ onClick, isLoading, isDisabled }: ReviewButtonProps) {
                 <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 w-48 bg-gray-800 text-white text-xs rounded-md py-1.5 px-3 z-50 animate-in fade-in zoom-in-95 duration-200 shadow-xl">
                     <div className="absolute right-[-4px] top-1/2 -translate-y-1/2 w-2 h-2 bg-gray-800 rotate-45"></div>
                     <p className="font-medium relative z-10 text-center">
-                        Mark as Reviewed
+                        Confirm & Archive (Mark Reviewed)
                     </p>
                 </div>
             )}
         </div>
     );
+}
+
+// Simple Icon component for the card
+function BanIcon({ className }: { className?: string }) {
+    return (
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+            <circle cx="12" cy="12" r="10" />
+            <path d="m4.9 4.9 14.2 14.2" />
+        </svg>
+    )
 }
 
 // --- Main Component ---
@@ -232,7 +265,6 @@ export default function FrameSecurity() {
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [lockdownLoading, setLockdownLoading] = useState(false);
 
-  // Helper to get severity color
   const getSeverityColor = (severity: string) => {
     switch (severity) {
       case 'high': return 'text-red-600 bg-red-50 border-red-200';
@@ -242,19 +274,17 @@ export default function FrameSecurity() {
     }
   };
 
-  // Helper to get system health text color
   const getHealthColor = (health?: string) => {
-    if (data?.system_lockdown) return 'text-red-600'; // Always red if in lockdown
+    if (data?.system_lockdown) return 'text-red-600'; 
     switch (health?.toLowerCase()) {
       case 'critical': return 'text-red-600';
       case 'warning': return 'text-orange-500';
-      default: return 'text-green-600'; // Good
+      default: return 'text-green-600'; 
     }
   };
 
-  // Helper to get system health background/icon color
   const getHealthBg = (health?: string) => {
-    if (data?.system_lockdown) return 'bg-red-100 text-red-600'; // Always red if in lockdown
+    if (data?.system_lockdown) return 'bg-red-100 text-red-600'; 
     switch (health?.toLowerCase()) {
       case 'critical': return 'bg-red-100 text-red-600';
       case 'warning': return 'bg-orange-100 text-orange-600';
@@ -276,12 +306,14 @@ export default function FrameSecurity() {
         return;
     }
     
-    // Only show full page loader on initial load
     if (isInitialLoad) setLoading(true);
     
     try {
         const response = await fetch(`${API_URL}/api/admin/security-data`, {
-            headers: { 'Authorization': `Bearer ${token}` },
+            headers: { 
+                'Authorization': `Bearer ${token}`
+            },
+            cache: 'no-store' 
         });
 
         if (!response.ok) {
@@ -295,7 +327,7 @@ export default function FrameSecurity() {
         const json: SecurityData = await response.json();
         setData(json);
     } catch (err: any) {
-        console.error("Error real:", err);
+        console.error("Error fetching data:", err);
         setError(err.message); 
     } finally {
         if (isInitialLoad) setLoading(false);
@@ -308,37 +340,71 @@ export default function FrameSecurity() {
 
   useEffect(() => {
     if (!loading) return;
-
     const interval = setInterval(() => {
         setLoadingDots((prev) => (prev.length >= 3 ? "" : prev + "."));
     }, 400);
-
     return () => clearInterval(interval);
   }, [loading]);
 
   const isGlobalLoading = actionLoadingId !== null || lockdownLoading;
 
-  // --- ACTIONS LOGIC ---
+  // --- ACTIONS ---
 
-  // Handle Threat Toggle
   const handleToggleThreat = async (incident: SecurityIncident) => {
       if (isGlobalLoading) return;
       setActionLoadingId(incident.id);
       const token = getToken();
+
+      // Determine action based on current state
+      // If resolved:
+      //    - Was Threat? -> Resolve (mark safe/false positive)
+      //    - Was Safe? -> Escalate (mark active threat)
+      // If pending:
+      //    - -> Resolve (mark safe)
+      
+      let action = 'resolve'; 
+      if (incident.status === 'resolved') {
+          action = incident.is_threat ? 'resolve' : 'escalate';
+      } else {
+          // Pending items are escalated/active by definition, so toggling means resolving as safe
+          action = 'resolve';
+      }
+
       try {
-          await fetch(`${API_URL}/api/admin/log/${incident.id}/toggle-threat`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+          await fetch(`${API_URL}/api/admin/log/${incident.id}/toggle-threat`, { 
+              method: 'POST', 
+              headers: { 
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json' 
+              },
+              body: JSON.stringify({ action }) 
+          });
+          
+          await new Promise(resolve => setTimeout(resolve, 300));
           await fetchSecurityData(false);
-      } finally { setActionLoadingId(null); }
+      } catch (error) {
+          console.error("Action failed", error);
+          alert("Failed to update status.");
+      } finally { 
+          setActionLoadingId(null); 
+      }
   };
 
-  // Handle Review Toggle
   const handleMarkReviewed = async (incident: SecurityIncident) => {
       if (isGlobalLoading) return;
+
       setActionLoadingId(incident.id);
       const token = getToken();
       try {
+          // "Review" means "Acknowledged". 
+          // It stays a threat (if it was one) but becomes 'resolved' in status (archived).
           await fetch(`${API_URL}/api/admin/log/${incident.id}/review`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+          
+          await new Promise(resolve => setTimeout(resolve, 300));
           await fetchSecurityData(false);
+      } catch (error) {
+          console.error("Review action failed", error);
+          alert("Failed to mark as reviewed.");
       } finally { setActionLoadingId(null); }
   };
 
@@ -348,8 +414,8 @@ export default function FrameSecurity() {
     const isLockingDown = !data.system_lockdown;
     
     const confirmMessage = isLockingDown
-        ? "⚠️ CRITICAL ACTION ⚠️\n\nAre you sure you want to initiate a SYSTEM LOCKDOWN?\n\n- All non-admin access will be blocked immediately.\n- Active sessions may be terminated.\n- This indicates a severe security threat."
-        : "Are you sure you want to UNLOCK the system?\n\nNormal access rules will apply immediately.";
+        ? "⚠️ CRITICAL ACTION ⚠️\n\nAre you sure you want to initiate a SYSTEM LOCKDOWN?"
+        : "Are you sure you want to UNLOCK the system?";
         
     if (!window.confirm(confirmMessage)) return;
 
@@ -361,8 +427,8 @@ export default function FrameSecurity() {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}` }
         });
-
         if (response.ok) {
+            await new Promise(resolve => setTimeout(resolve, 500)); 
             await fetchSecurityData(false);
         } else {
             alert("Failed to toggle system lockdown.");
@@ -430,7 +496,7 @@ export default function FrameSecurity() {
                             {/* Lockdown Status Indicator */}
                             {data?.system_lockdown && (
                                 <div className="bg-red-600 text-white px-6 py-3 rounded-lg flex items-center gap-3 shadow-lg animate-pulse">
-                                    <Lock className="w-6 h-6" /> {/* Updated Icon */}
+                                    <Lock className="w-6 h-6" /> 
                                     <div>
                                         <p className="font-bold text-lg leading-none">SYSTEM LOCKDOWN ACTIVE</p>
                                         <p className="text-xs opacity-90 mt-1">All standard access is suspended</p>
@@ -466,13 +532,12 @@ export default function FrameSecurity() {
                                 <div>
                                     <p className="text-gray-500 text-sm font-medium">System Health</p>
                                     <p className={cn("text-3xl font-bold mt-1", getHealthColor(data?.stats.system_health))}>
-                                        {/* Display 'LOCKED' if lockdown is active, otherwise normal health status */}
                                         {data?.system_lockdown ? 'LOCKED' : data?.stats.system_health}
                                     </p>
                                 </div>
                                 <div className={cn("h-12 w-12 rounded-full flex items-center justify-center transition-colors", getHealthBg(data?.stats.system_health))}>
                                     {data?.system_lockdown ? (
-                                        <Lock className="h-6 w-6" /> // Updated Icon for Locked State
+                                        <Lock className="h-6 w-6" /> 
                                     ) : (
                                         data?.stats.system_health === 'Critical' ? <AlertTriangle className="h-6 w-6" /> : <Activity className="h-6 w-6" />
                                     )}
@@ -491,14 +556,11 @@ export default function FrameSecurity() {
                                                 key={incident.id} 
                                                 className={cn(
                                                     "p-4 md:p-5 flex flex-col md:flex-row md:items-center justify-between transition-colors", 
-                                                    // STYLES AI vs NORMAL
-                                                    incident.is_ai 
-                                                        ? incident.status === 'pending' 
-                                                            ? "bg-indigo-50/70 border-l-4 border-l-indigo-500" // AI Pending
-                                                            : "bg-indigo-50/20" // AI Resolved
-                                                        : incident.status === 'pending' 
-                                                            ? "bg-red-50/30 hover:bg-red-50/60" // Normal Pending
-                                                            : "hover:bg-gray-50" // Normal Resolved
+                                                    incident.status === 'pending'
+                                                        ? incident.is_ai 
+                                                            ? "bg-indigo-50"
+                                                            : "bg-red-50"
+                                                        : "bg-white hover:bg-gray-50 opacity-75"
                                                 )}
                                             >
                                                 <div className="flex flex-col gap-1 mb-3 md:mb-0">
@@ -509,22 +571,34 @@ export default function FrameSecurity() {
                                                             {incident.severity}
                                                         </span>
                                                         
-                                                        {/* TYPE TEXT + AI ICON */}
+                                                        {/* TYPE TEXT */}
                                                         <span className={cn("font-medium flex items-center gap-2", incident.status === 'pending' ? "text-red-900" : "text-gray-700")}>
-                                                            {incident.is_ai && <Bot className="w-5 h-5 text-indigo-600" />}
                                                             {incident.type}
                                                         </span>
 
                                                         {/* STATUS BADGES */}
-                                                        {incident.status === 'pending' && !incident.is_ai && (
-                                                            <span className="flex items-center text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full animate-pulse">
-                                                                <AlertTriangle className="w-3 h-3 mr-1" /> Action Required
-                                                            </span>
-                                                        )}
-                                                        {incident.status === 'pending' && incident.is_ai && (
-                                                            <span className="flex items-center text-xs font-bold text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full border border-indigo-200">
-                                                                <Sparkles className="w-3 h-3 mr-1" /> AI Suspicion
-                                                            </span>
+                                                        {incident.status === 'pending' ? (
+                                                            // PENDING STATE
+                                                            incident.is_ai ? (
+                                                                <span className="flex items-center text-xs font-bold text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full border border-indigo-200">
+                                                                    <Sparkles className="w-3 h-3 mr-1" /> AI Suspicion
+                                                                </span>
+                                                            ) : (
+                                                                <span className="flex items-center text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full animate-pulse">
+                                                                    <AlertTriangle className="w-3 h-3 mr-1" /> Action Required
+                                                                </span>
+                                                            )
+                                                        ) : (
+                                                            // RESOLVED STATE
+                                                            incident.is_threat ? (
+                                                                <span className="flex items-center text-xs font-bold text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200">
+                                                                    <FileCheck className="w-3 h-3 mr-1 text-gray-500" /> Reviewed Threat
+                                                                </span>
+                                                            ) : (
+                                                                <span className="flex items-center text-xs font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full border border-green-200">
+                                                                    <ShieldCheck className="w-3 h-3 mr-1" /> False Positive
+                                                                </span>
+                                                            )
                                                         )}
                                                     </div>
 
@@ -543,7 +617,13 @@ export default function FrameSecurity() {
                                                 <div className="flex items-center gap-3 pl-0 md:pl-4">
                                                     {incident.status === 'pending' && <ReviewButton onClick={() => handleMarkReviewed(incident)} isLoading={actionLoadingId === incident.id} isDisabled={isGlobalLoading} />}
                                                     {incident.status === 'pending' && <div className="h-6 w-px bg-gray-300"></div>}
-                                                    <SecurityActionToggle status={incident.status} onClick={() => handleToggleThreat(incident)} isLoading={actionLoadingId === incident.id} isDisabled={isGlobalLoading} />
+                                                    <SecurityActionToggle 
+                                                        status={incident.status} 
+                                                        isThreat={incident.is_threat} // Passem la info per al tooltip
+                                                        onClick={() => handleToggleThreat(incident)} 
+                                                        isLoading={actionLoadingId === incident.id} 
+                                                        isDisabled={isGlobalLoading} 
+                                                    />
                                                 </div>
                                             </div>
                                         ))}
@@ -581,14 +661,4 @@ export default function FrameSecurity() {
             </div>
         </div>
   );
-}
-
-// Simple Icon component for the card
-function BanIcon({ className }: { className?: string }) {
-    return (
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-            <circle cx="12" cy="12" r="10" />
-            <path d="m4.9 4.9 14.2 14.2" />
-        </svg>
-    )
 }

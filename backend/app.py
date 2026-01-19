@@ -40,6 +40,12 @@ SIGNATURE_KEY = os.getenv("SIGNATURE_KEY").encode('utf-8')
 SMTP_EMAIL= os.getenv("SMTP_EMAIL")
 SMTP_PASSWORD= os.getenv("SMTP_PASSWORD")
 
+def no_cache(response):
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
 
 
 #=================================================
@@ -101,7 +107,6 @@ def admin_required(f):
 def get_last_3_logs():
     conn = get_db_connection()
     cur = conn.cursor()
-    # SOLUCIÓ: Seleccionem els camps de 'logs', incloent user_id
     cur.execute("""
         SELECT user_id, role, access_time, entry_allowed, area, reason
         FROM logs
@@ -116,7 +121,6 @@ def get_last_3_logs():
 def get_all_logs():
     conn = get_db_connection()
     cur = conn.cursor()
-    # SOLUCIÓ: Seleccionem només de la taula 'logs'
     cur.execute("""
         SELECT user_id, role, access_time, entry_allowed, area, reason
         FROM logs
@@ -594,43 +598,47 @@ REPETITION_THRESHOLD = 3
 @admin_required
 def toggle_threat_status(user_id, role, log_id):
     try:
+        req_data = request.get_json()
+        action = req_data.get('action') # 'resolve' or 'escalate'
+
         conn = get_db_connection()
-        cur = conn.cursor()
+        related_ids = find_cluster_ids_for_log(conn, log_id)
         
-        # 1. Get current status and details of the target log
-        cur.execute("SELECT user_id, error_code, is_threat, is_reviewed FROM logs WHERE id = %s", (log_id,))
-        log = cur.fetchone()
-        
-        if not log:
+        if not related_ids:
             return jsonify({'message': 'Log not found'}), 404
             
-        target_user_id = log['user_id']
-        target_error_code = log['error_code']
-        current_threat_status = log['is_threat']
-        current_review_status = log['is_reviewed']
+        cur = conn.cursor()
         
-        # DETERMINE TARGET STATE
-        # We assume if it's PENDING (Threat & Not Reviewed), we want to make it SAFE.
-        # If it's anything else (Safe or Reviewed Threat), we want to make it ACTIVE THREAT.
-        
-        is_pending = current_threat_status and not current_review_status
-        
-        if is_pending:
-            # Action: Mark as Safe (False Positive)
-            new_threat_status = False
-            new_review_status = True
+        if action == 'resolve':
+            # Mark as safe (Reviewed = True, Threat = False)
+            new_threat = False
+            new_review = True
+        elif action == 'escalate':
+            # Mark as threat (Reviewed = False, Threat = True)
+            new_threat = True
+            new_review = False
         else:
-            # Action: Escalate to Active Threat
-            new_threat_status = True
-            new_review_status = False
+            # Fallback (Toggle based on current state)
+            cur.execute("SELECT is_threat, is_reviewed FROM logs WHERE id = %s", (log_id,))
+            log_state = cur.fetchone()
+            if not log_state: return jsonify({'message': 'Log not found'}), 404
+            
+            # Extract values safely
+            current_threat = log_state['is_threat'] if isinstance(log_state, dict) or hasattr(log_state, 'keys') else log_state[0]
+            current_reviewed = log_state['is_reviewed'] if isinstance(log_state, dict) or hasattr(log_state, 'keys') else log_state[1]
+            
+            if current_threat and not current_reviewed: 
+                new_threat = False
+                new_review = True
+            else:
+                new_threat = True
+                new_review = False
+
+        format_strings = ','.join(['%s'] * len(related_ids))
+        query = f"UPDATE logs SET is_threat = %s, is_reviewed = %s WHERE id IN ({format_strings})"
         
-        # Apply to ALL related logs (Same User + Same Error Code)
-        cur.execute("""
-            UPDATE logs 
-            SET is_threat = %s, is_reviewed = %s
-            WHERE user_id = %s 
-            AND error_code = %s
-        """, (new_threat_status, new_review_status, target_user_id, target_error_code))
+        params = [new_threat, new_review] + related_ids
+        cur.execute(query, tuple(params))
         
         rows_affected = cur.rowcount
         conn.commit()
@@ -639,11 +647,12 @@ def toggle_threat_status(user_id, role, log_id):
         
         return jsonify({
             'status': 'success', 
-            'new_is_threat': new_threat_status,
+            'new_is_threat': new_threat,
             'updated_count': rows_affected
         }), 200
         
     except Exception as e:
+        print(f"Error toggling threat: {e}")
         return jsonify({'message': f'Error toggling status: {str(e)}'}), 500
 
 # Mark as Reviewed Endpoint
@@ -653,38 +662,25 @@ def toggle_threat_status(user_id, role, log_id):
 def toggle_review_status(user_id, role, log_id):
     try:
         conn = get_db_connection()
+        related_ids = find_cluster_ids_for_log(conn, log_id)
+        
+        if not related_ids:
+             related_ids = [str(log_id)]
+
+        new_review = True
+        
         cur = conn.cursor()
+        format_strings = ','.join(['%s'] * len(related_ids))
+        query = f"UPDATE logs SET is_reviewed = %s WHERE id IN ({format_strings})"
         
-        # Get current status
-        cur.execute("SELECT user_id, error_code, is_reviewed FROM logs WHERE id = %s", (log_id,))
-        log = cur.fetchone()
-        
-        if not log:
-            return jsonify({'message': 'Log not found'}), 404
-            
-        target_user_id = log['user_id']
-        target_error_code = log['error_code']
-        # For review button, we only support marking as reviewed (true)
-        # We don't support "unreviewing" via this specific button logic for now based on your request
-        new_review_status = True
-        
-        # Batch update similar logs
-        
-        cur.execute("""
-            UPDATE logs 
-            SET is_reviewed = %s
-            WHERE user_id = %s 
-            AND error_code = %s
-        """, (new_review_status, target_user_id, target_error_code))
+        params = [new_review] + related_ids
+        cur.execute(query, tuple(params))
         
         conn.commit()
         cur.close()
         conn.close()
         
-        return jsonify({
-            'status': 'success', 
-            'new_is_reviewed': new_review_status
-        }), 200
+        return jsonify({'status': 'success', 'new_is_reviewed': new_review}), 200
         
     except Exception as e:
         return jsonify({'message': f'Error updating review status: {str(e)}'}), 500
@@ -704,7 +700,11 @@ def toggle_system_lockdown(user_id, role):
         row = cur.fetchone()
         
         # Determine new status (Toggle)
-        current_status = row['value_data'] == 'true' if row else False
+        current_status = False
+        if row:
+             val = row['value_data'] if isinstance(row, dict) or hasattr(row, 'keys') else row[0]
+             current_status = val == 'true'
+
         new_status = not current_status
         new_status_str = 'true' if new_status else 'false'
         
@@ -718,11 +718,10 @@ def toggle_system_lockdown(user_id, role):
         cur.close()
         conn.close()
 
-        # Send email notification to all admins
         try:
             send_lockdown_email(new_status)
-        except Exception as email_err:
-            print(f"Warning: Could not send lockdown email: {email_err}")
+        except Exception:
+            pass # Fail silently on email
         
         return jsonify({
             'status': 'success', 
@@ -927,7 +926,7 @@ def api_security_dashboard_data(user_id, role):
                  # Visual distinction for AI
                 display_type = reason
                 if error_code == 'AI_ANOMALY':
-                    display_type = f"AI Alert: {reason}"
+                    display_type = f"Possible Threat: {reason}"
                 elif count > 1:
                     display_type = f"{reason} ({count} attempts in 10 min)"
                 
@@ -940,7 +939,8 @@ def api_security_dashboard_data(user_id, role):
                     'timestamp': incident_time_str,
                     'status': status,
                     'is_ai': error_code == 'AI_ANOMALY',
-                    'count': count
+                    'count': count,
+                    'is_threat': db_threat_flag
                 })
 
         # Sort incidents by time DESC before sending
@@ -949,7 +949,7 @@ def api_security_dashboard_data(user_id, role):
         recent_incidents_response = recent_incidents_response[:10]
 
         
-        return jsonify({
+        return no_cache(jsonify({
             'admin_name': admin_name,
             'system_lockdown': system_lockdown,
             'stats': {
@@ -959,7 +959,7 @@ def api_security_dashboard_data(user_id, role):
                 'risk_score': total_risk_score
             },
             'recent_incidents': recent_incidents_response
-        }), 200
+        })), 200
 
     except Exception as e:
         import traceback
@@ -971,6 +971,98 @@ def api_security_dashboard_data(user_id, role):
 #=================================================
 # === HELPER FUNCTIONS ===
 #=================================================
+
+def find_cluster_ids_for_log(conn, target_log_id):
+    """
+    Finds log IDs belonging to the same cluster.
+    Different error types from same user in same window are now SPLIT.
+    """
+    cur = conn.cursor()
+    
+    # Fetch Target Log Details
+    cur.execute("SELECT id, user_id, error_code, is_anomaly, access_time FROM logs WHERE id = %s", (target_log_id,))
+    target = cur.fetchone()
+    
+    if not target:
+        cur.close()
+        return []
+
+    # Handle Tuple vs Dict
+    if isinstance(target, dict) or hasattr(target, 'keys'):
+        t_id = target['id']
+        t_user_id = target['user_id']
+        t_error = target.get('error_code')
+        t_anomaly = target.get('is_anomaly')
+        t_time = target['access_time']
+    else:
+        t_id = target[0]
+        t_user_id = target[1]
+        t_error = target[2]
+        t_anomaly = target[3]
+        t_time = target[4]
+    
+    if isinstance(t_time, str):
+        try: t_time = datetime.strptime(t_time.split('.')[0], "%Y-%m-%d %H:%M:%S")
+        except: t_time = datetime.now()
+
+    if t_anomaly:
+        query = "SELECT id, user_id, error_code, is_anomaly, access_time FROM logs WHERE user_id = %s AND is_anomaly = TRUE ORDER BY access_time DESC"
+        params = (t_user_id,)
+    elif t_error is None:
+        query = "SELECT id, user_id, error_code, is_anomaly, access_time FROM logs WHERE user_id = %s AND error_code IS NULL AND is_anomaly IS NOT TRUE ORDER BY access_time DESC"
+        params = (t_user_id,)
+    else:
+        query = "SELECT id, user_id, error_code, is_anomaly, access_time FROM logs WHERE user_id = %s AND error_code = %s ORDER BY access_time DESC"
+        params = (t_user_id, t_error)
+        
+    cur.execute(query, params)
+    rows = cur.fetchall()
+    cur.close()
+    
+    target_id_str = str(t_id)
+    if not rows: return [target_id_str]
+
+    # Clustering Logic
+    logs = []
+    for r in rows:
+        d = dict(r)
+        if isinstance(d['access_time'], str):
+             try: d['access_time'] = datetime.strptime(d['access_time'].split('.')[0], "%Y-%m-%d %H:%M:%S")
+             except: d['access_time'] = datetime.now()
+        logs.append(d)
+
+    target_cluster_ids = []
+    
+    # Build clusters (Since we filtered by error type in SQL, we only check time now)
+    if logs:
+        current_cluster = [logs[0]]
+        cluster_head_time = logs[0]['access_time']
+        
+        all_clusters = []
+        
+        for i in range(1, len(logs)):
+            log = logs[i]
+            time_diff = cluster_head_time - log['access_time']
+            is_within = abs(time_diff.total_seconds()) < (SESSION_TIMEOUT_MINUTES * 60)
+            
+            if is_within:
+                current_cluster.append(log)
+            else:
+                all_clusters.append(current_cluster)
+                current_cluster = [log]
+                cluster_head_time = log['access_time']
+        all_clusters.append(current_cluster)
+
+        for cluster in all_clusters:
+            ids_in_cluster = [str(l['id']) for l in cluster]
+            if target_id_str in ids_in_cluster:
+                target_cluster_ids = ids_in_cluster
+                break
+    
+    if not target_cluster_ids:
+        target_cluster_ids = [target_id_str]
+
+    return target_cluster_ids
 
 # Helper to automatically review old non-threatening logs
 def auto_review_old_logs(conn):

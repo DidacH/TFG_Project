@@ -100,6 +100,7 @@ def process_access_log_async(qr_data, target_area):
 
     risk_score = 0.0
     is_anomaly = False
+    is_threat = False
 
     # Execute AI analysis
     if qr_data['valid']:
@@ -107,7 +108,9 @@ def process_access_log_async(qr_data, target_area):
             risk_score, is_anomaly = predict_anomaly(log_entry)
             
             if is_anomaly:
+                is_threat = True  # Mark as threat for now
                 print(f"\n[BACKGROUND] SECURITY ALERT: Anomaly detected! Score: {risk_score:.4f}")
+
                 # Send the alert without blocking
                 send_anomaly_alert(log_entry, risk_score)
             else:
@@ -130,8 +133,8 @@ def process_access_log_async(qr_data, target_area):
         cur = conn.cursor()
         
         cur.execute('''
-            INSERT INTO logs (user_id, role, area, access_time, entry_allowed, reason, risk_score, error_code)
-            VALUES (COALESCE(%s, 'unknown'), COALESCE(%s, 'unknown'), %s, %s, %s, %s, %s, %s)
+            INSERT INTO logs (user_id, role, area, access_time, entry_allowed, reason, risk_score, error_code, is_anomaly, is_threat)
+            VALUES (COALESCE(%s, 'unknown'), COALESCE(%s, 'unknown'), %s, %s, %s, %s, %s, %s, %s, %s)
         ''', (
             qr_data['user_id'],
             qr_data['role'],
@@ -139,8 +142,10 @@ def process_access_log_async(qr_data, target_area):
             qr_data['access_time'],
             int(qr_data['valid']),
             qr_data['reason'],
-            float(risk_score), # Store risk score
-            qr_data['error_code']
+            float(risk_score), # Store AI risk score
+            qr_data['error_code'],
+            bool(is_anomaly),
+            bool(is_threat)
         ))
         conn.commit()
         cur.close()

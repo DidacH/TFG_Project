@@ -325,6 +325,7 @@ def make_last_log_anomaly():
     conn.close()
 
 
+
 if __name__ == "__main__":
 
 
@@ -346,7 +347,7 @@ if __name__ == "__main__":
     # print(select_roles())
     # print(select_access_rules())
     # print(select_system_config())
-    make_last_log_anomaly()
+    # make_last_log_anomaly()
     
 
     get_all_table_names()
