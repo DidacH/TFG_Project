@@ -62,7 +62,7 @@ def init_logs_table():
             role TEXT,
             area TEXT NOT NULL,
             access_time TEXT NOT NULL,
-            entry_allowed INTEGER NOT NULL,
+            entry_allowed BOOLEAN DEFAULT TRUE,
             reason TEXT NOT NULL,
             error_code TEXT,
             risk_score FLOAT DEFAULT 0.0,
@@ -80,7 +80,7 @@ def init_access_rules_table():
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute('''
-        CREATE TABLE access_rules (
+        CREATE TABLE IF NOT EXISTS access_rules (
             id SERIAL PRIMARY KEY,
             role VARCHAR(50) NOT NULL,
             allowed_area VARCHAR(100) NOT NULL
@@ -144,7 +144,7 @@ def init_alert_rules_table():
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute('''
-        CREATE TABLE alert_rules (
+        CREATE TABLE IF NOT EXISTS alert_rules (
         id SERIAL PRIMARY KEY,
         event_type VARCHAR(50) NOT NULL, -- Ex: 'AREA_VIOLATION', 'TIME_VIOLATION', 'EXPIRED'
         role_filter VARCHAR(50) NOT NULL DEFAULT 'ALL',
@@ -158,7 +158,6 @@ def init_alert_rules_table():
     
 
 def get_all_roles():
-    """Obté tots els rols disponibles per al registre."""
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("SELECT name FROM roles ORDER BY name DESC")
@@ -170,10 +169,12 @@ def get_all_roles():
 def delete_tables():
     conn = get_db_connection()
     cur = conn.cursor()
-    # DELETE ORDER: logs -> users -> roles
     cur.execute('DROP TABLE IF EXISTS logs CASCADE') 
     cur.execute('DROP TABLE IF EXISTS users CASCADE')
     cur.execute('DROP TABLE IF EXISTS roles CASCADE')
+    cur.execute('DROP TABLE IF EXISTS access_rules CASCADE')
+    cur.execute('DROP TABLE IF EXISTS system_config CASCADE')
+    cur.execute('DROP TABLE IF EXISTS alert_rules CASCADE')
     conn.commit()
     cur.close()
     conn.close()
@@ -182,9 +183,25 @@ def hash_password(password):
      return bcrypt.hashpw(password.encode(), bcrypt.gensalt())
 
 def check_password(password, hashed):
-    if isinstance(hashed, memoryview):
-        hashed = bytes(hashed)
-    return bcrypt.checkpw(password.encode(), hashed)
+
+    try:
+        # Convert memoryview to bytes
+        if isinstance(hashed, memoryview):
+            hashed = bytes(hashed)
+
+        # Handle hex string format (if stored as hex in DB)
+        if hashed.startswith('\\x'):
+            hashed = bytes.fromhex(hashed[2:])
+
+        # Validation with bcrypt
+        return bcrypt.checkpw(password.encode('utf-8'), hashed)
+
+    except ValueError as e:
+        print(f"❌ Critical Password Validation Error (Invalid Salt/Format): {e}")
+        return False
+    except Exception as e:
+        print(f"❌ Unexpected Error in check_password: {e}")
+        return False
 
 def save_user(id, name, email, password, role, qr_image_bytes, timestamp, registered_at):
     conn = get_db_connection()
@@ -330,8 +347,8 @@ if __name__ == "__main__":
 
 
     #Tables deletion
-    # delete_tables()
-    # print("Database tables deleted (users, logs, roles).")
+    #delete_tables()
+
     
     #Tables creation
     # init_roles_table()

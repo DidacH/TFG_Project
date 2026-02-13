@@ -793,7 +793,7 @@ def api_security_dashboard_data(user_id, role):
         yesterday_str = yesterday_obj.strftime("%Y-%m-%d %H:%M:%S")
 
         # Blocked Counters (Raw count of ALL blocked attempts in 24h)
-        cur.execute("SELECT COUNT(*) as blocked FROM logs WHERE entry_allowed = 0 AND access_time >= %s", (yesterday_str,))
+        cur.execute("SELECT COUNT(*) as blocked FROM logs WHERE entry_allowed IS FALSE AND access_time >= %s", (yesterday_str,))
         row = cur.fetchone()
         blocked_24h = row['blocked'] if row else 0
 
@@ -806,9 +806,9 @@ def api_security_dashboard_data(user_id, role):
             SELECT id, user_id, role, area, access_time, entry_allowed, reason, error_code, is_threat, is_reviewed, is_anomaly 
             FROM logs 
             WHERE 
-                (entry_allowed = 0 OR is_threat = TRUE OR is_anomaly = TRUE)
+                (entry_allowed IS FALSE OR is_threat IS TRUE OR is_anomaly IS TRUE)
             AND 
-                (access_time >= %s OR (is_threat = TRUE AND is_reviewed = FALSE) OR (is_anomaly = TRUE AND is_reviewed = FALSE))
+                (access_time >= %s OR (is_threat IS TRUE AND is_reviewed IS FALSE) OR (is_anomaly IS TRUE AND is_reviewed IS FALSE))
             ORDER BY access_time DESC
         """, (yesterday_str,))
         

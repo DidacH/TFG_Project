@@ -9,7 +9,7 @@ load_dotenv()
 sys.path.append(os.path.join(os.path.dirname(__file__), 'backend'))
 
 try:
-    from database import get_db_connection, save_user
+    from database import get_db_connection, save_user, init_roles_table, init_users_table, init_logs_table, init_access_rules_table, init_system_config_table, init_alert_rules_table, delete_tables
     from QR_generation_validation import generate_qr
 except ImportError as e:
     print(f"Error d'importació: {e}")
@@ -23,6 +23,21 @@ if not SIGNATURE_KEY:
 
 SIGNATURE_KEY_BYTES = SIGNATURE_KEY.encode('utf-8')
 
+
+def create_tables_if_not_exist():
+    """
+    Defineix l'estructura de la base de dades i crea les taules
+    si encara no existeixen. Això permet executar el seed en una DB buida.
+    """
+    print("   🔨 Verificant/Creant estructura de taules...")
+
+    init_roles_table()
+    init_users_table()
+    init_logs_table()
+    init_access_rules_table()
+    init_system_config_table()
+    init_alert_rules_table()
+
 def seed_data():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -30,6 +45,10 @@ def seed_data():
     print("🌱 Iniciant el procés de seed a la base de dades...")
 
     try:
+        delete_tables()
+        conn.commit()
+        create_tables_if_not_exist()
+
         # Table cleanup
         print("   🧹 Netejant taules existents...")
         cur.execute("TRUNCATE TABLE logs, users, access_rules, system_config, alert_rules RESTART IDENTITY CASCADE;")
