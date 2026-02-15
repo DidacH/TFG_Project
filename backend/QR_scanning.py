@@ -8,11 +8,14 @@ from security_analyzer import predict_anomaly, send_anomaly_alert, load_or_train
 import threading
 from time import sleep
 from security_analyzer import send_anomaly_alert
+import requests
 
 load_dotenv()  #Load environment variables from .env file
 
 SIGNATURE_KEY = os.getenv("SIGNATURE_KEY").encode('utf-8')  #Ensure the key is in bytes format
 CURRENT_AREA = os.getenv("DEVICE_AREA_NAME")
+API_HOST = os.getenv("API_HOST", "http://127.0.0.1:5000")
+TRIGGER_URL = f"{API_HOST}/api/internal/trigger-update" # Endpoint to trigger updates in the web server
 
 print(f"\n" + "="*40)
 print(f" System initialized.")
@@ -140,7 +143,7 @@ def process_access_log_async(qr_data, target_area):
             qr_data['role'],
             target_area,
             qr_data['access_time'],
-            int(qr_data['valid']),
+            bool(qr_data['valid']),
             qr_data['reason'],
             float(risk_score), # Store AI risk score
             qr_data['error_code'],
@@ -151,6 +154,18 @@ def process_access_log_async(qr_data, target_area):
         cur.close()
         conn.close()
         print("[BACKGROUND] Log correctly stored.")
+
+        try:
+            payload = {
+                'type': 'new_log',
+                'is_threat': is_threat or is_anomaly,
+                'user_id': qr_data['user_id']
+            }
+            
+            requests.post(TRIGGER_URL, json=payload, timeout=1)
+            print(f"[BACKGROUND] 📡 Update signal sent to {API_HOST}")
+        except Exception as req_e:
+            print(f"[WARNING] Could not notify {API_HOST}: {req_e}")
         
     except Exception as e:
         print(f"Error saving to DB: {e}")

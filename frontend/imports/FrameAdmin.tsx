@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Loader2, UserCircle, Users, FileText, LogOut, AlertTriangle, CheckCircle2, LockKeyholeIcon } from "lucide-react";
 import { cn } from "../components/ui/utils";
+import { useWebSocket } from "../context/WebSocketContext";
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -73,6 +74,7 @@ export default function FrameAdmin() {
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [loadingDots, setLoadingDots] = useState("");
+  const {socket} = useWebSocket(); //Obtain WebSocket's global instance
 
   //Get token from localStorage
   const getToken = () => localStorage.getItem('token');
@@ -93,13 +95,16 @@ export default function FrameAdmin() {
   }, [navigate]);
 
   //Fetch admin data
-  const fetchAdminData = useCallback(async () => {
+  const fetchAdminData = useCallback(async (isBackgroundUpdate = false) => {
     const token = getToken();
     if (!token) {
         handleLogout();
         return;
     }
-    setLoading(true);
+    // Only show loading screen if it's not a background update
+    if (!isBackgroundUpdate) {
+        setLoading(true);
+    }
     try {
         const response = await fetch(`${API_URL}/api/admin/dashboard-data`, {
             headers: { 'Authorization': `Bearer ${token}` },
@@ -123,8 +128,36 @@ export default function FrameAdmin() {
 
   //Hook to fetch data on mount
   useEffect(() => {
-    fetchAdminData();
+    fetchAdminData(false);
   }, [fetchAdminData]);
+
+  useEffect(() => {
+        if (!socket) return;
+
+        const handleUpdate = (data: any) => {
+            console.log("New data received", data);
+            fetchAdminData(true); // Update data in the background when receiving a WebSocket event
+        };
+
+        socket.on("dashboard_update", handleUpdate);
+
+        const handleConnect = () => {
+            console.log("🔄 Socket connected/reconnected. Sincronizing data...");
+            fetchAdminData(true); // Silent update on connect/reconnect to ensure we have the latest data
+        };
+
+        socket.on("connect", handleConnect);
+
+        if (socket.connected) {
+            handleConnect();
+        }
+
+        return () => {
+            console.log("🔌 Stopped listening for Admin Dashboard updates...");
+            socket.off("dashboard_update", handleUpdate);
+            socket.off("connect", handleConnect);
+        };
+    }, [socket, fetchAdminData]);
 
   useEffect(() => {
     if (!loading) return;

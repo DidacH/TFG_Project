@@ -2,11 +2,13 @@ import { useState, useEffect, useCallback, useRef} from "react";
 import { useNavigate } from "react-router-dom";
 import { Loader2, RefreshCw, UserCircle, LogOut } from "lucide-react";
 import { cn } from "../components/ui/utils";
+import { useWebSocket } from "../context/WebSocketContext";
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 const QR_REFRESH_INTERVAL = 30; //The interval in seconds to refresh the QR code
 
 interface DashboardData {
+    id: string;
     name: string;
     qr_base64: string;
     remaining: number; //Seconds until next refresh
@@ -57,6 +59,8 @@ export default function FrameDashboard() {
   const isRefreshingRef = useRef(false); //Ref to track ongoing refresh state (sychronous)
   const isInitialLoadDone = useRef(false); //Ref to track if initial load is done
   const prevQrBase64Ref = useRef<string | null | undefined>(); //Ref to store previous QR code for comparison
+  const { socket } = useWebSocket();
+  const userIdRef = useRef<string | undefined>(data?.id);
 
   //Function to get JWT token
   const getToken = () => localStorage.getItem('token');
@@ -70,20 +74,20 @@ export default function FrameDashboard() {
   }, [navigate]);
 
   //Fetch or refresh QR code data
-  const refreshQr = useCallback(async (isInitialLoad: boolean = false) => {
+  const refreshQr = useCallback(async (isInitialLoad: boolean = false, fetchOnly: boolean = false) => {
     if (!getToken()) {
         handleLogout();
         return;
     }
 
-    if (isRefreshingRef.current && !isInitialLoad) return; //Prevent overlapping refreshes
+    if (isRefreshingRef.current && !isInitialLoad && !fetchOnly) return; //Prevent overlapping refreshes
 
     isRefreshingRef.current = true;
-    setIsRefreshing(true);
+    if (!fetchOnly) setIsRefreshing(true);
 
     try {
         //Use the correct API endpoint based on whether it is initial load or just QR refresh
-        const endpoint = isInitialLoad ? '/api/dashboard-data' : '/api/refresh-qr'; 
+        const endpoint = (isInitialLoad || fetchOnly) ? '/api/dashboard-data' : '/api/refresh-qr'; 
         
         const response = await fetch(`${API_URL}${endpoint}`, {
             method: 'GET',
@@ -103,10 +107,10 @@ export default function FrameDashboard() {
         }
 
         //Update state with new data. Only update the entire object on initial load.
-        if (isInitialLoad) {
+        if (isInitialLoad || fetchOnly) {
             setData(json);
             //Use the initial remaining time from the server for the first countdown
-            setRemainingTime(json.remaining); 
+            if (isInitialLoad) setRemainingTime(json.remaining); 
         } else {
             //For refresh, only update qr_base64
             setData(prev => prev ? ({ ...prev, qr_base64: json.qr_base64 }) : null);
@@ -117,12 +121,17 @@ export default function FrameDashboard() {
         setError(err.message);
     } finally {
         isRefreshingRef.current = false;
-        setIsRefreshing(false);
+        if (!fetchOnly) setIsRefreshing(false);
         if (isInitialLoad) setLoading(false);
     }
   }, [handleLogout]);
 
 
+  useEffect(() => {
+        userIdRef.current = data?.id;
+    }, [data?.id]);
+
+    
   //Countdown timer effect
   useEffect(() => {
     if (loading || error || !data || isRefreshing) return; //Don't start timer if loading state, error state, or refreshing
@@ -170,6 +179,49 @@ export default function FrameDashboard() {
     prevQrBase64Ref.current = currentQr;
 
   }, [data?.qr_base64, data?.remaining, refreshQr]);
+
+  //WebSocket effect to listen for updates
+  useEffect(() => {
+        if (!socket) return;
+
+        const handleUpdateData = (eventData?: any) => {
+            const currentUserId = userIdRef.current;
+
+            // Specific update (with user ID) - Only refresh if it matches our current user ID
+            if (eventData && eventData.user_id) {
+                if (currentUserId && eventData.user_id === currentUserId) {
+                    console.log("✅ My access, updating dashboard...");
+                    refreshQr(false, true);
+                } else {
+                    // This update is for another user, ignore it
+                    console.log("⚠️ Received dashboard update for another user, ignoring...");
+                }
+            } 
+            // Generic update without user ID
+            else {
+                console.log("🔄 Generic synchronization / Reconnect...");
+                refreshQr(false, true);
+            }
+        };
+
+        socket.on("dashboard_update", handleUpdateData);
+
+        const onConnect = () => {
+            handleUpdateData();
+        };
+
+        socket.on("connect", onConnect);
+
+        if (socket.connected) {
+            onConnect();
+        }
+
+        return () => {
+            socket.off("dashboard_update", handleUpdateData);
+            socket.off("connect", onConnect);
+        };
+        
+    }, [socket, refreshQr]);
 
 
   //Initial data check and fetch on mount

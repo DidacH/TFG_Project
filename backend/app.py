@@ -18,6 +18,7 @@ from security_analyzer import get_admin_emails
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from flask_socketio import SocketIO, emit
 
 load_dotenv()  # Load environment variables from .env file
 
@@ -39,6 +40,9 @@ SIGNATURE_KEY = os.getenv("SIGNATURE_KEY").encode('utf-8')
 
 SMTP_EMAIL= os.getenv("SMTP_EMAIL")
 SMTP_PASSWORD= os.getenv("SMTP_PASSWORD")
+
+# Socket initialization
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 # Helper function to prevent response caching
 def no_cache(response):
@@ -325,6 +329,7 @@ def api_dashboard_data(user_id, role): # user_id and role are passed by the deco
 
         # Prepare response data
         response_data = {
+            'id': user_id,
             'name': user['name'],
             'email': user['email'],
             'role': user['role'],
@@ -1158,10 +1163,37 @@ def send_lockdown_email(active):
     except Exception as e:
         print(f"Failed to send email: {e}")
 
+#=================================================
+# === WEBSOCKET IMPLEMENTATION ===
+#=================================================
+@app.route('/api/internal/trigger-update', methods=['POST'])
+def internal_trigger_update():
+    """
+    Called by QR_scanning.py when a new access event is logged.
+    It emits a websocket event to all connected clients to trigger dashboard updates.
+    """
+    data = request.get_json() or {}
+    update_type = data.get('type', 'new_log')
+    user_id = data.get('user_id')
+    
+    # Send update to all clients connected to the dashboard
+    socketio.emit('dashboard_update', {
+        'type': update_type, 
+        'timestamp': time.time(),
+        'user_id': user_id,
+        })
+    
+    # Send update to all clients connected to the security page if it's a threat
+    if data.get('is_threat'):
+        socketio.emit('security_update', {'type': 'new_threat', 'msg': 'Anomaly detected'})
+
+    return jsonify({'status': 'ok'}), 200
+
 
 #=================================================
 # === APPLICATION START ===
 #=================================================
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    print("Starting Flask Server with WebSocket support...")
+    socketio.run(app, debug=True, port=5000)
