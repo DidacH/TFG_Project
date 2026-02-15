@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Loader2, UserCircle, Users, FileText, LogOut, AlertTriangle, CheckCircle2, LockKeyholeIcon } from "lucide-react";
 import { cn } from "../components/ui/utils";
+import { io } from "socket.io-client";
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -93,13 +94,15 @@ export default function FrameAdmin() {
   }, [navigate]);
 
   //Fetch admin data
-  const fetchAdminData = useCallback(async () => {
+  const fetchAdminData = useCallback(async (isBackgroundUpdate = false) => {
     const token = getToken();
     if (!token) {
         handleLogout();
         return;
     }
-    setLoading(true);
+    if (!isBackgroundUpdate) {
+        setLoading(true);
+    }
     try {
         const response = await fetch(`${API_URL}/api/admin/dashboard-data`, {
             headers: { 'Authorization': `Bearer ${token}` },
@@ -123,8 +126,37 @@ export default function FrameAdmin() {
 
   //Hook to fetch data on mount
   useEffect(() => {
-    fetchAdminData();
+    fetchAdminData(false);
   }, [fetchAdminData]);
+
+  useEffect(() => {
+        const socketUrl = API_URL || "http://127.0.0.1:5000"; 
+
+        console.log("🔌 Trying to connect WebSocket to:", socketUrl);
+
+        const socket = io(socketUrl, {
+            transports: ['websocket'],
+            withCredentials: true,
+        });
+
+        socket.on("connect", () => {
+            console.log("🟢 WEBSOCKET CONNECTED! ID:", socket.id);
+        });
+
+        socket.on("connect_error", (err) => {
+            console.error("🔴 ERROR CONNECTING WITH WEBSOCKET:", err.message);
+        });
+
+        socket.on("dashboard_update", (data) => {
+            console.log("New data received:", data);
+            fetchAdminData(true); // Update dashboard data on every update event
+        });
+
+        return () => {
+            console.log("🔌 Disconnecting WebSocket...");
+            socket.disconnect();
+        };
+    }, [fetchAdminData]);
 
   useEffect(() => {
     if (!loading) return;
