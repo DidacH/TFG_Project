@@ -305,7 +305,7 @@ def api_dashboard_data(user_id, role): # user_id and role are passed by the deco
         # Fetch last successful access
         cur.execute('''
             SELECT access_time, area FROM logs
-            WHERE user_id = %s AND entry_allowed = 1
+            WHERE user_id = %s AND entry_allowed IS TRUE
             ORDER BY access_time DESC LIMIT 1
         ''', (user_id,))
         last_access_record = cur.fetchone()
@@ -314,7 +314,7 @@ def api_dashboard_data(user_id, role): # user_id and role are passed by the deco
         # Fetch access history (successful accesses)
         cur.execute('''
             SELECT access_time, area FROM logs
-            WHERE user_id = %s AND entry_allowed = 1
+            WHERE user_id = %s AND entry_allowed IS TRUE
             ORDER BY access_time DESC
         ''', (user_id,))
         history_records = cur.fetchall()
@@ -512,7 +512,7 @@ def get_suspicious_logs():
     cur.execute("""
         SELECT id, user_id, role, area, access_time, risk_score, reason 
         FROM logs 
-        WHERE entry_allowed = TRUE AND risk_score < %s
+        WHERE entry_allowed IS TRUE AND risk_score < %s
         ORDER BY access_time DESC LIMIT 50
     """, (threshold,))
     logs = cur.fetchall()
@@ -531,7 +531,7 @@ def get_denied_logs():
     cur.execute("""
         SELECT id, user_id, role, area, access_time, reason 
         FROM logs 
-        WHERE entry_allowed = FALSE
+        WHERE entry_allowed IS FALSE
         ORDER BY access_time DESC LIMIT 50
     """)
     logs = cur.fetchall()

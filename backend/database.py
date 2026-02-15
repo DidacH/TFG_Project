@@ -188,14 +188,12 @@ def check_password(password, hashed):
         # Convert memoryview to bytes
         if isinstance(hashed, memoryview):
             hashed = bytes(hashed)
-
         # Handle hex string format (if stored as hex in DB)
-        if hashed.startswith('\\x'):
+        elif hashed.startswith('\\x'):
             hashed = bytes.fromhex(hashed[2:])
 
         # Validation with bcrypt
         return bcrypt.checkpw(password.encode('utf-8'), hashed)
-
     except ValueError as e:
         print(f"❌ Critical Password Validation Error (Invalid Salt/Format): {e}")
         return False
