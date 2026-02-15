@@ -329,6 +329,7 @@ def api_dashboard_data(user_id, role): # user_id and role are passed by the deco
 
         # Prepare response data
         response_data = {
+            'id': user_id,
             'name': user['name'],
             'email': user['email'],
             'role': user['role'],
@@ -1173,9 +1174,14 @@ def internal_trigger_update():
     """
     data = request.get_json() or {}
     update_type = data.get('type', 'new_log')
+    user_id = data.get('user_id')
     
     # Send update to all clients connected to the dashboard
-    socketio.emit('dashboard_update', {'type': update_type, 'timestamp': time.time()})
+    socketio.emit('dashboard_update', {
+        'type': update_type, 
+        'timestamp': time.time(),
+        'user_id': user_id,
+        })
     
     # Send update to all clients connected to the security page if it's a threat
     if data.get('is_threat'):

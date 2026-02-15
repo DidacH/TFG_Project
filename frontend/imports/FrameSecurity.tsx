@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { useWebSocket } from "../context/WebSocketContext";
 import { 
   Loader2, 
   UserCircle, 
@@ -260,6 +261,7 @@ export default function FrameSecurity() {
   const [loadingDots, setLoadingDots] = useState("");
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [lockdownLoading, setLockdownLoading] = useState(false);
+  const { socket } = useWebSocket();
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -295,14 +297,17 @@ export default function FrameSecurity() {
     navigate("/login");
   }, [navigate]);
 
-  const fetchSecurityData = useCallback(async (isInitialLoad = false) => {
+  const fetchSecurityData = useCallback(async (isBackgroundUpdate = false) => {
     const token = getToken();
     if (!token) {
         handleLogout();
         return;
     }
     
-    if (isInitialLoad) setLoading(true);
+    // Only show loading screen if it's not a background update
+    if (!isBackgroundUpdate){
+        setLoading(true);
+    } 
     
     try {
         const response = await fetch(`${API_URL}/api/admin/security-data`, {
@@ -326,13 +331,37 @@ export default function FrameSecurity() {
         console.error("Error fetching data:", err);
         setError(err.message); 
     } finally {
-        if (isInitialLoad) setLoading(false);
+        setLoading(false);
     }
   }, [handleLogout]);
 
   useEffect(() => {
-    fetchSecurityData(true);
+    fetchSecurityData(false);
   }, [fetchSecurityData]);
+
+  useEffect(() => {
+        if (!socket) return;
+
+        const handleSecurityUpdate = (data: any) => {
+            console.log("New security log received", data);
+            fetchSecurityData(true);
+        };
+
+        socket.on("security_update", handleSecurityUpdate);
+
+        const handleConnect = () => {
+            console.log("🔄 Socket connected/reconnected. Sincronizing data...");
+            fetchSecurityData(true); // Silent update on connect/reconnect to ensure we have the latest data
+        };
+
+        socket.on("connect", handleConnect);
+
+        return () => {
+            console.log("🔌 Stopped listening for Security page updates...");
+            socket.off("security_update", handleSecurityUpdate);
+            socket.off("connect", handleConnect);
+        };
+    }, [socket, fetchSecurityData]);
 
   useEffect(() => {
     if (!loading) return;
@@ -376,7 +405,7 @@ export default function FrameSecurity() {
           });
           
           await new Promise(resolve => setTimeout(resolve, 300));
-          await fetchSecurityData(false);
+          await fetchSecurityData(true);
       } catch (error) {
           console.error("Action failed", error);
           alert("Failed to update status.");
@@ -394,7 +423,7 @@ export default function FrameSecurity() {
           await fetch(`${API_URL}/api/admin/log/${incident.id}/review`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
           
           await new Promise(resolve => setTimeout(resolve, 300));
-          await fetchSecurityData(false);
+          await fetchSecurityData(true);
       } catch (error) {
           console.error("Review action failed", error);
           alert("Failed to mark as reviewed.");
@@ -422,7 +451,7 @@ export default function FrameSecurity() {
         });
         if (response.ok) {
             await new Promise(resolve => setTimeout(resolve, 500)); 
-            await fetchSecurityData(false);
+            await fetchSecurityData(true);
         } else {
             alert("Failed to toggle system lockdown.");
         }

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Loader2, UserCircle, Users, FileText, LogOut, AlertTriangle, CheckCircle2, LockKeyholeIcon } from "lucide-react";
 import { cn } from "../components/ui/utils";
-import { io } from "socket.io-client";
+import { useWebSocket } from "../context/WebSocketContext";
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -74,6 +74,7 @@ export default function FrameAdmin() {
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [loadingDots, setLoadingDots] = useState("");
+  const {socket} = useWebSocket(); //Obtain WebSocket's global instance
 
   //Get token from localStorage
   const getToken = () => localStorage.getItem('token');
@@ -100,6 +101,7 @@ export default function FrameAdmin() {
         handleLogout();
         return;
     }
+    // Only show loading screen if it's not a background update
     if (!isBackgroundUpdate) {
         setLoading(true);
     }
@@ -130,33 +132,32 @@ export default function FrameAdmin() {
   }, [fetchAdminData]);
 
   useEffect(() => {
-        const socketUrl = API_URL || "http://127.0.0.1:5000"; 
+        if (!socket) return;
 
-        console.log("🔌 Trying to connect WebSocket to:", socketUrl);
+        const handleUpdate = (data: any) => {
+            console.log("New data received", data);
+            fetchAdminData(true); // Update data in the background when receiving a WebSocket event
+        };
 
-        const socket = io(socketUrl, {
-            transports: ['websocket'],
-            withCredentials: true,
-        });
+        socket.on("dashboard_update", handleUpdate);
 
-        socket.on("connect", () => {
-            console.log("🟢 WEBSOCKET CONNECTED! ID:", socket.id);
-        });
+        const handleConnect = () => {
+            console.log("🔄 Socket connected/reconnected. Sincronizing data...");
+            fetchAdminData(true); // Silent update on connect/reconnect to ensure we have the latest data
+        };
 
-        socket.on("connect_error", (err) => {
-            console.error("🔴 ERROR CONNECTING WITH WEBSOCKET:", err.message);
-        });
+        socket.on("connect", handleConnect);
 
-        socket.on("dashboard_update", (data) => {
-            console.log("New data received:", data);
-            fetchAdminData(true); // Update dashboard data on every update event
-        });
+        if (socket.connected) {
+            handleConnect();
+        }
 
         return () => {
-            console.log("🔌 Disconnecting WebSocket...");
-            socket.disconnect();
+            console.log("🔌 Stopped listening for Admin Dashboard updates...");
+            socket.off("dashboard_update", handleUpdate);
+            socket.off("connect", handleConnect);
         };
-    }, [fetchAdminData]);
+    }, [socket, fetchAdminData]);
 
   useEffect(() => {
     if (!loading) return;
