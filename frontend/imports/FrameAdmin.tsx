@@ -76,6 +76,10 @@ export default function FrameAdmin() {
   const [loadingDots, setLoadingDots] = useState("");
   const {socket} = useWebSocket(); //Obtain WebSocket's global instance
 
+  useEffect(() => {
+    document.title = "AIloQR - Admin Panel";
+  }, []);
+
   //Get token from localStorage
   const getToken = () => localStorage.getItem('token');
 

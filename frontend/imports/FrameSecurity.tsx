@@ -263,6 +263,10 @@ export default function FrameSecurity() {
   const [lockdownLoading, setLockdownLoading] = useState(false);
   const { socket } = useWebSocket();
 
+  useEffect(() => {
+    document.title = "AIloQR - Security Center";
+  }, []);
+
   const getSeverityColor = (severity: string) => {
     switch (severity) {
       case 'high': return 'text-red-600 bg-red-50 border-red-200';

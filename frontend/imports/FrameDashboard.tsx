@@ -62,6 +62,10 @@ export default function FrameDashboard() {
   const { socket } = useWebSocket();
   const userIdRef = useRef<string | undefined>(data?.id);
 
+  useEffect(() => {
+    document.title = "AIloQR - Dashboard";
+  }, []);
+
   //Function to get JWT token
   const getToken = () => localStorage.getItem('token');
 

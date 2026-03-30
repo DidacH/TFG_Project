@@ -187,6 +187,10 @@ export default function FrameRegister() {
     const roleRef = useRef<HTMLSelectElement>(null);
     const adminKeyRef = useRef<HTMLInputElement>(null);
 
+    useEffect(() => {
+    document.title = "AIloQR - Register";
+  }, []);
+
     //Fetch roles from backend on component mount
     useEffect(() => {
         const fetchRoles = async () => {

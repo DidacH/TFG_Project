@@ -131,6 +131,10 @@ export default function FrameLogin() {
   const passwordRef = useRef<HTMLInputElement>(null);
   const inputs = [emailRef, passwordRef];
 
+  useEffect(() => {
+    document.title = "AIloQR - Login";
+  }, []);
+
   const validate = () => {
     const newErrors: { email?: string; password?: string } = {};
     if (!email) newErrors.email = "Email is required.";
