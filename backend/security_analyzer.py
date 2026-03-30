@@ -29,7 +29,7 @@ try:
     ANOMALY_THRESHOLD = float(raw_threshold)
     print(f"Anomaly threshold set to {ANOMALY_THRESHOLD}")
 except ValueError:
-    print(f"⚠️ Error: El valor '{raw_threshold}' al .env no és vàlid. Usant -0.15 per defecte.")
+    print(f"⚠️ Error: The value '{raw_threshold}' in .env isn't valid. Using -0.15 default threshold.")
     ANOMALY_THRESHOLD = -0.15
 
 def save_model_artifacts():

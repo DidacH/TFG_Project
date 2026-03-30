@@ -1195,5 +1195,14 @@ def internal_trigger_update():
 #=================================================
 
 if __name__ == "__main__":
-    print("Starting Flask Server with WebSocket support...")
-    socketio.run(app, debug=True, port=5000)
+
+    env = os.environ.get("ENVIRONMENT", "development")
+    
+    is_debug = (env == "development")
+
+    port = int(os.environ.get("PORT", 5000))
+
+    print(f"Initializing Flask server in mode: {env.upper()}")
+    print(f"WebSocket activated on port {port}...")
+
+    socketio.run(app, host="0.0.0.0", port=port, debug=is_debug)
