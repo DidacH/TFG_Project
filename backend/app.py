@@ -1,9 +1,9 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, Response, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file
 from flask_cors import CORS
 import jwt
 from QR_generation_validation import generate_qr
 import uuid
-from database import save_user, check_password, get_db_connection, get_user_by_email, update_user, delete_user_by_email, get_all_roles
+from database import save_user, check_password, get_db_connection, get_user_by_email, get_all_roles
 import base64
 from io import BytesIO, StringIO
 from PIL import Image
@@ -18,7 +18,7 @@ from security_analyzer import get_admin_emails
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO
 
 load_dotenv()  # Load environment variables from .env file
 
