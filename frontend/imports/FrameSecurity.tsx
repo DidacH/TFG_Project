@@ -22,7 +22,7 @@ function cn(...classes: (string | undefined | null | false)[]) {
   return classes.filter(Boolean).join(" ");
 }
 
-const API_URL = '';
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 // --- Interfaces ---
 
