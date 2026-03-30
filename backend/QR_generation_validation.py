@@ -4,6 +4,7 @@ import time
 import io
 from datetime import datetime
 from database import get_db_connection
+import pytz
 
 # --- CACHE FOR HARD RULES AND CONFIG ---
 _RULES_CACHE = None
@@ -87,7 +88,9 @@ def load_rules_from_db():
 
 def verify_qr(content, secret_key, target_area):
     now = int(time.time())
-    current_dt = datetime.fromtimestamp(now)
+
+    spain_tz = pytz.timezone('Europe/Madrid')
+    current_dt = datetime.now(spain_tz)
     time_str = current_dt.strftime('%Y-%m-%d %H:%M:%S')
     
     try:

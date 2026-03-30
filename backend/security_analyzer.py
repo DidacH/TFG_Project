@@ -11,6 +11,8 @@ from psycopg2 import extras
 import pickle
 from datetime import datetime, timedelta
 import random
+from dotenv import load_dotenv
+load_dotenv()  # Load environment variables from .env file
 
 # --- SMTP CONFIGURATION ---
 SMTP_EMAIL = os.getenv("SMTP_EMAIL")

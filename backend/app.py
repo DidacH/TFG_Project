@@ -1,3 +1,7 @@
+from dotenv import load_dotenv
+import os
+load_dotenv()  # Load environment variables from .env file
+
 from flask import Flask, render_template, request, jsonify, send_file
 from flask_cors import CORS
 import jwt
@@ -11,16 +15,13 @@ from PIL import Image
 import csv
 from datetime import datetime, timedelta, timezone
 import time
-from dotenv import load_dotenv
-import os
 import re
 from functools import wraps
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from flask_socketio import SocketIO
-
-load_dotenv()  # Load environment variables from .env file
+import pytz
 
 app = Flask(
     __name__,
@@ -42,7 +43,7 @@ SMTP_EMAIL= os.getenv("SMTP_EMAIL")
 SMTP_PASSWORD= os.getenv("SMTP_PASSWORD")
 
 # Socket initialization
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
 
 # Helper function to prevent response caching
 def no_cache(response):
@@ -216,7 +217,8 @@ def api_register():
     try:
         user_id = str(uuid.uuid4())
         qr_image, last_qr_time = generate_qr(user_id, SIGNATURE_KEY)
-        registered_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        spain_tz = pytz.timezone('Europe/Madrid')
+        registered_at = datetime.now(spain_tz).strftime("%Y-%m-%d %H:%M:%S")
         
         save_user(user_id, name, email, password, role, qr_image, last_qr_time, registered_at)
 
@@ -1124,7 +1126,7 @@ def background_access_processing(qr_data, target_area):
 def find_cluster_ids_for_log(conn, target_log_id):
     """
     Finds log IDs belonging to the same cluster.
-    Different error types from same user in same window are now SPLIT.
+    Different error types from same user in same window are SPLIT.
     """
     cur = conn.cursor()
     
@@ -1324,10 +1326,16 @@ def internal_trigger_update():
 if __name__ == "__main__":
 
     env = os.environ.get("ENVIRONMENT", "development")
-    
     is_debug = (env == "development")
-
     port = int(os.environ.get("PORT", 5000))
+
+    # --- PRE-LOAD AI MODEL ON START ---
+    print("Initializing AI model...")
+    try:
+        load_or_train_model()
+        print("AI model prepared and loaded into memory.")
+    except Exception as e:
+        print(f"Warning: Failed to load AI model: {e}")
 
     print(f"Initializing Flask server in mode: {env.upper()}")
     print(f"WebSocket activated on port {port}...")
