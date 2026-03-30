@@ -1,7 +1,8 @@
 from flask import Flask, render_template, request, jsonify, send_file
 from flask_cors import CORS
 import jwt
-from QR_generation_validation import generate_qr
+from QR_generation_validation import generate_qr, verify_qr
+from security_analyzer import predict_anomaly, send_anomaly_alert, load_or_train_model, send_access_denied_alert, get_admin_emails
 import uuid
 from database import save_user, check_password, get_db_connection, get_user_by_email, get_all_roles
 import base64
@@ -14,7 +15,6 @@ from dotenv import load_dotenv
 import os
 import re
 from functools import wraps
-from security_analyzer import get_admin_emails
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -264,6 +264,39 @@ def api_login():
         return jsonify({'token': token, 'role': user['role']}), 200
     except Exception as e:
         return jsonify({'message': f'Error in token generation: {e}'}), 500
+    
+
+# EDGE DEVICE ENDPOINTS (QR SCANNERS)
+
+@app.route('/api/access/scan', methods=['POST'])
+def api_access_scan():
+    """
+    Endpoint called by the door device with the QR content.
+    """
+    data = request.get_json()
+    
+    if not data or 'qr_data' not in data or 'area' not in data:
+        return jsonify({"granted": False, "reason": "Missing data in payload"}), 400
+
+    qr_content = data['qr_data']
+    target_area = data['area']
+
+    # Validate QR
+    validation_result = verify_qr(qr_content, SIGNATURE_KEY, target_area)
+
+    # Prepare response data for the door device
+    response_data = {
+        "granted": validation_result['valid'],
+        "reason": validation_result['reason'],
+        "user_id": validation_result['user_id'],
+        "role": validation_result['role']
+    }
+
+    # Heavy processing (DB storage, AI analysis, alerting) is done in the background to not block the door response
+    socketio.start_background_task(background_access_processing, validation_result, target_area)
+
+    # Return immediate response to the door device
+    return jsonify(response_data), 200
     
 
 #=================================================
@@ -993,6 +1026,100 @@ def api_security_dashboard_data(user_id, role):
 #=================================================
 # === HELPER FUNCTIONS ===
 #=================================================
+
+def check_should_notify_hard_rule(qr_data, target_area):
+    """
+    Checks if a denied access has to be notified according to the alert_rules.
+    """
+    if qr_data['valid']:
+        return False
+
+    error_code = qr_data.get('error_code')
+    role = qr_data.get('role', 'Unknown')
+    should_notify = False
+    
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        query = """
+            SELECT id FROM alert_rules 
+            WHERE is_active = TRUE
+            AND event_type = %s
+            AND (role_filter = 'ALL' OR role_filter = %s)
+            AND (area_filter = 'ALL' OR area_filter = %s)
+            LIMIT 1
+        """
+        cur.execute(query, (error_code, role, target_area))
+        if cur.fetchone():
+            should_notify = True
+            
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"Error checking alert rules: {e}")
+
+    return should_notify
+
+def background_access_processing(qr_data, target_area):
+    """
+    Executed on the background to not block the door while the AI analyzes.
+    """
+    risk_score = 0.0
+    is_anomaly = False
+    is_threat = False
+
+    log_entry = {
+        'user_id': qr_data['user_id'],
+        'role': qr_data['role'],
+        'area': target_area,
+        'access_time': qr_data['access_time'],
+        'entry_allowed': qr_data['valid'],
+        'reason': qr_data['reason']
+    }
+
+    # AI analysis and alerting
+    if qr_data['valid']:
+        try:
+            risk_score, is_anomaly = predict_anomaly(log_entry)
+            if is_anomaly:
+                is_threat = True
+                print(f"[BACKGROUND] ANOMALY DETECTED! Score: {risk_score:.4f}")
+                send_anomaly_alert(log_entry, risk_score)
+        except Exception as e:
+            print(f"Error during AI analysis: {e}")
+    else:
+        if check_should_notify_hard_rule(qr_data, target_area):
+            log_entry['reason'] = f"HARD RULE: {qr_data['reason']}"
+            send_access_denied_alert(log_entry)
+
+    # Database storage
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('''
+            INSERT INTO logs (user_id, role, area, access_time, entry_allowed, reason, risk_score, error_code, is_anomaly, is_threat)
+            VALUES (COALESCE(%s, 'unknown'), COALESCE(%s, 'unknown'), %s, %s, %s, %s, %s, %s, %s, %s)
+        ''', (
+            qr_data['user_id'], qr_data['role'], target_area, qr_data['access_time'],
+            bool(qr_data['valid']), qr_data['reason'], float(risk_score),
+            qr_data['error_code'], bool(is_anomaly), bool(is_threat)
+        ))
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        # Notify dashboard of new log (with WebSocket)
+        socketio.emit('dashboard_update', {
+            'type': 'new_log', 
+            'timestamp': time.time(),
+            'user_id': qr_data['user_id']
+        })
+        
+        if is_threat or is_anomaly:
+            socketio.emit('security_update', {'type': 'new_threat', 'msg': 'Anomaly detected'})
+
+    except Exception as e:
+        print(f"Error storing record in DB: {e}")
 
 def find_cluster_ids_for_log(conn, target_log_id):
     """
