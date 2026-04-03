@@ -316,12 +316,12 @@ def send_anomaly_alert(log_entry, score):
         msg = MIMEMultipart()
         msg['From'] = SMTP_EMAIL
         msg['Subject'] = subject
-        msg['To'] = SMTP_EMAIL 
+        msg['To'] = ", ".join(admin_emails)
         
         msg.attach(MIMEText(body_html, 'html'))
 
         # Connect to Gmail SMTP server
-        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server = smtplib.SMTP('smtp.gmail.com', 587, timeout=3)
         server.starttls() # Secure encryption
         server.login(SMTP_EMAIL, SMTP_PASSWORD)
         
@@ -369,12 +369,12 @@ def send_access_denied_alert(log_entry):
         msg = MIMEMultipart()
         msg['From'] = SMTP_EMAIL
         msg['Subject'] = subject
-        msg['To'] = SMTP_EMAIL 
+        msg['To'] = ", ".join(admin_emails)
         
         msg.attach(MIMEText(body_html, 'html'))
 
         # Connect to Gmail SMTP server
-        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server = smtplib.SMTP('smtp.gmail.com', 587, timeout=3)
         server.starttls() # Secure encryption
         server.login(SMTP_EMAIL, SMTP_PASSWORD)
         

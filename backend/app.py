@@ -117,7 +117,8 @@ def get_last_3_logs():
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
-        SELECT user_id, role, access_time, entry_allowed, area, reason
+        SELECT user_id, role, access_time, entry_allowed, area, 
+               CASE WHEN is_anomaly IS TRUE AND entry_allowed IS TRUE THEN 'AI Anomaly Detected' ELSE reason END as reason
         FROM logs
         ORDER BY access_time DESC
         LIMIT 3
@@ -132,7 +133,8 @@ def get_all_logs():
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
-        SELECT user_id, role, access_time, entry_allowed, area, reason
+        SELECT user_id, role, access_time, entry_allowed, area,
+                CASE WHEN is_anomaly IS TRUE AND entry_allowed IS TRUE THEN 'AI Anomaly Detected' ELSE reason END as reason
         FROM logs
         ORDER BY access_time DESC
     """)
@@ -1068,10 +1070,15 @@ def check_should_notify_hard_rule(qr_data, target_area):
 def background_access_processing(qr_data, target_area):
     """
     Executed on the background to not block the door while the AI analyzes.
+    Optimized: DB storage and WebSockets run FIRST to avoid UI delays caused by SMTP.
     """
     risk_score = 0.0
     is_anomaly = False
     is_threat = False
+
+    # Variables to control alert sending after DB storage and WebSocket notifications are done
+    should_send_anomaly_alert = False
+    should_send_hard_rule_alert = False
 
     log_entry = {
         'user_id': qr_data['user_id'],
@@ -1082,22 +1089,23 @@ def background_access_processing(qr_data, target_area):
         'reason': qr_data['reason']
     }
 
-    # AI analysis and alerting
+    # AI analysis and rule checking
     if qr_data['valid']:
         try:
             risk_score, is_anomaly = predict_anomaly(log_entry)
             if is_anomaly:
                 is_threat = True
                 print(f"[BACKGROUND] ANOMALY DETECTED! Score: {risk_score:.4f}")
-                send_anomaly_alert(log_entry, risk_score)
+                should_send_anomaly_alert = True 
         except Exception as e:
             print(f"Error during AI analysis: {e}")
     else:
         if check_should_notify_hard_rule(qr_data, target_area):
             log_entry['reason'] = f"HARD RULE: {qr_data['reason']}"
-            send_access_denied_alert(log_entry)
+            # En lloc d'enviar el correu aquí, activem la variable
+            should_send_hard_rule_alert = True
 
-    # Database storage
+    # Database storage and WebSockets
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -1118,13 +1126,20 @@ def background_access_processing(qr_data, target_area):
             'type': 'new_log', 
             'timestamp': time.time(),
             'user_id': qr_data['user_id']
-        })
+        }, broadcast=True)
         
         if is_threat or is_anomaly:
-            socketio.emit('security_update', {'type': 'new_threat', 'msg': 'Anomaly detected'})
+            socketio.emit('security_update', {'type': 'new_threat', 'msg': 'Anomaly detected'}, broadcast=True)
 
     except Exception as e:
         print(f"Error storing record in DB: {e}")
+
+    # Email Sending
+    if should_send_anomaly_alert:
+        socketio.start_background_task(send_anomaly_alert, log_entry, risk_score)
+        
+    if should_send_hard_rule_alert:
+        socketio.start_background_task(send_access_denied_alert, log_entry)
 
 def find_cluster_ids_for_log(conn, target_log_id):
     """
