@@ -344,28 +344,38 @@ export default function FrameSecurity() {
   }, [fetchSecurityData]);
 
   useEffect(() => {
-        if (!socket) return;
+    if (!socket) return;
 
-        const handleSecurityUpdate = (data: any) => {
-            console.log("New security log received", data);
-            fetchSecurityData(true);
-        };
+    let isFetching = false;
 
-        socket.on("security_update", handleSecurityUpdate);
+    const handleUpdate = async (data: any) => {
+        console.log("New data received via WebSocket (Security)", data);
+        if (isFetching) return; 
+        
+        isFetching = true;
+        await fetchSecurityData(true); 
+        isFetching = false;
+    };
 
-        const handleConnect = () => {
-            console.log("🔄 Socket connected/reconnected. Sincronizing data...");
-            fetchSecurityData(true); // Silent update on connect/reconnect to ensure we have the latest data
-        };
+    // 1. Escoltem ELS DOS tipus d'esdeveniments que envia el teu backend
+    socket.on("dashboard_update", handleUpdate); // Per mantenir els comptadors globals vius
+    socket.on("security_update", handleUpdate);  // Per a alertes d'IA i amenaces específiques
 
-        socket.on("connect", handleConnect);
+    // 2. Reconnexió intel·ligent
+    const handleReconnect = () => {
+        console.log("🔄 Socket reconectat. Sincronitzant tauler de seguretat...");
+        handleUpdate({ type: 'reconnect' });
+    };
+    
+    socket.on("connect", handleReconnect);
 
-        return () => {
-            console.log("🔌 Stopped listening for Security page updates...");
-            socket.off("security_update", handleSecurityUpdate);
-            socket.off("connect", handleConnect);
-        };
-    }, [socket, fetchSecurityData]);
+    // 3. Neteja total en desmuntar el component
+    return () => {
+        socket.off("dashboard_update", handleUpdate);
+        socket.off("security_update", handleUpdate);
+        socket.off("connect", handleReconnect);
+    };
+  }, [socket, fetchSecurityData]);
 
   useEffect(() => {
     if (!loading) return;

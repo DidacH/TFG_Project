@@ -1,52 +1,75 @@
 import cv2
+from pyzbar.pyzbar import decode
 import requests
-from pyzbar.pyzbar import decode, ZBarSymbol
-import os
-from dotenv import load_dotenv
+import time
+# from gpiozero import LED
 
-load_dotenv()
+# --- CONFIGURATION ---
+API_URL = "https://tfg-project-qr-access.onrender.com/api/access/scan"
 
-API_URL = os.getenv("API_HOST", "http://127.0.0.1:5000") + "/api/access/scan"
-CURRENT_AREA = os.getenv("DEVICE_AREA_NAME", "Classroom_1")
+# green_led = LED(17)
+# red_led = LED(27)
 
-def scan_and_send():
-    cam = cv2.VideoCapture(0)
-    print(f"--- Scanner active in {CURRENT_AREA} ---")
-    
+# Camera initialization
+cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
+cap.set(3, 640) # Resolution: Width
+cap.set(4, 480) # Resolution: Height
+
+print("🟢 Scanner active")
+print("Press Ctrl+C to stop the scanner")
+print("Scan your QR code...")
+
+try:
     while True:
-        ret, frame = cam.read()
-        if not ret: break
-        
-        qr_codes = decode(frame, symbols=[ZBarSymbol.QRCODE])
-        cv2.imshow("QR Scanner", frame)
-        
-        if cv2.waitKey(1) == 27: break # ESC
-        
-        if qr_codes:
-            qr_content = qr_codes[0].data.decode('utf-8')
-            print(f"QR Detected! Sending to server...")
-            
-            # Stop camera and send data to server
+        ret, frame = cap.read()
+        if not ret:
+            time.sleep(0.1)
+            continue
+
+        # Decode QRs
+        qrs = decode(frame)
+        for qr in qrs:
+            qr_data = qr.data.decode('utf-8')
+            print(f"\n[+] QR Detected! Data: {qr_data[:20]}...")
+            print("Sending data to server to validate...")
+
+            # --- BACKEND CALL ---
             try:
-                response = requests.post(API_URL, json={
-                    "qr_data": qr_content,
-                    "area": CURRENT_AREA
-                }, timeout=5)
-                
-                result = response.json()
-                if result.get("granted"):
-                    print("✅ ACCESS GRANTED!")
+                payload = {"qr_data": qr_data, "area": "Classroom_1"}
+                response = requests.post(API_URL, json=payload, timeout=5)
+
+                if response.status_code == 200:
+                    result = response.json()
+
+                    if result.get("granted"):
+                        print("✅ ACCESS ALLOWED! Opening door...")
+                        # green_led.on()
+                    else:
+                        print(f"❌ ACCESS DENIED! Reason: {result.get('reason', 'Unknown')}")
+                        # red_led.on()
                 else:
-                    print(f"❌ ACCESS DENIED: {result.get('reason')}")
-                    
-            except requests.exceptions.RequestException as e:
-                print(f"⚠️ Error connecting to the server: {e}")
-                
-            # Little pause to avoid multiple scans of the same QR
-            cv2.waitKey(2000) 
+                    print(f"⚠️ Server Error: Code {response.status_code}")
 
-    cam.release()
-    cv2.destroyAllWindows()
+            except Exception as e:
+                print(f"⚠️ Connection Error: {e}")
 
-if __name__ == "__main__":
-    scan_and_send()
+            # Little delay after scanning to keep the door open / avoid multiple scans
+            time.sleep(3)
+
+            # green_led.off()
+            # red_led.off()
+
+            # Empty the images buffer (read and discard old images)
+            for _ in range(10):
+                cap.read()
+
+            print("\nScan your QR code...")
+
+            # Exit the for loop to read a new image
+            break
+
+except KeyboardInterrupt:
+    print("\nStopping scanner manually...")
+finally:
+    cap.release()
+    print("Scanner off.")
