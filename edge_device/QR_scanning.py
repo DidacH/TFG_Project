@@ -1,17 +1,22 @@
 import cv2
 from pyzbar.pyzbar import decode
 import requests
+import os
+from dotenv import load_dotenv
 import time
 # from gpiozero import LED
 
 # --- CONFIGURATION ---
-API_URL = "https://tfg-project-qr-access.onrender.com/api/access/scan"
+load_dotenv()
+
+API_HOST = os.getenv("API_HOST")
+DEVICE_AREA_NAME = os.getenv("DEVICE_AREA_NAME", "Unknown")
 
 # green_led = LED(17)
 # red_led = LED(27)
 
 # Camera initialization
-cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
+cap = cv2.VideoCapture(0)
 cap.set(3, 640) # Resolution: Width
 cap.set(4, 480) # Resolution: Height
 
@@ -35,8 +40,8 @@ try:
 
             # --- BACKEND CALL ---
             try:
-                payload = {"qr_data": qr_data, "area": "Classroom_1"}
-                response = requests.post(API_URL, json=payload, timeout=5)
+                payload = {"qr_data": qr_data, "area": DEVICE_AREA_NAME}
+                response = requests.post(API_HOST, json=payload, timeout=5)
 
                 if response.status_code == 200:
                     result = response.json()

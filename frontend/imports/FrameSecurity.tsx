@@ -349,27 +349,28 @@ export default function FrameSecurity() {
     let isFetching = false;
 
     const handleUpdate = async (data: any) => {
-        console.log("New data received via WebSocket (Security)", data);
-        if (isFetching) return; 
-        
-        isFetching = true;
-        await fetchSecurityData(true); 
-        isFetching = false;
-    };
+            
+            if (isFetching) {
+                return; 
+            }
+            
+            isFetching = true;
+            try {
+                await fetchSecurityData(true); 
+            } finally {
+                isFetching = false; 
+            }
+        };
 
-    // 1. Escoltem ELS DOS tipus d'esdeveniments que envia el teu backend
-    socket.on("dashboard_update", handleUpdate); // Per mantenir els comptadors globals vius
-    socket.on("security_update", handleUpdate);  // Per a alertes d'IA i amenaces específiques
+    socket.on("dashboard_update", handleUpdate);
+    socket.on("security_update", handleUpdate);
 
-    // 2. Reconnexió intel·ligent
     const handleReconnect = () => {
-        console.log("🔄 Socket reconectat. Sincronitzant tauler de seguretat...");
         handleUpdate({ type: 'reconnect' });
     };
     
     socket.on("connect", handleReconnect);
 
-    // 3. Neteja total en desmuntar el component
     return () => {
         socket.off("dashboard_update", handleUpdate);
         socket.off("security_update", handleUpdate);

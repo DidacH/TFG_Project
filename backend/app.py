@@ -3,7 +3,7 @@ gevent.monkey.patch_all()
 
 from dotenv import load_dotenv
 import os
-load_dotenv()  # Load environment variables from .env file
+load_dotenv() 
 
 from flask import Flask, render_template, request, jsonify, send_file
 from flask_cors import CORS
@@ -26,11 +26,9 @@ from email.mime.multipart import MIMEMultipart
 from flask_socketio import SocketIO
 import pytz
 
-app = Flask(
-    __name__,
-)
+app = Flask(__name__)
 
-CORS(app, supports_credentials=True) # Allow communication between frontend and backend
+CORS(app, supports_credentials=True) 
 
 app.config.update(
     SESSION_COOKIE_SECURE=True,
@@ -42,13 +40,12 @@ app.secret_key = os.getenv("SECRET_KEY")
 ADMIN_REGISTRATION_KEY = os.getenv("ADMIN_KEY")
 SIGNATURE_KEY = os.getenv("SIGNATURE_KEY").encode('utf-8')
 
-SMTP_EMAIL= os.getenv("SMTP_EMAIL")
-SMTP_PASSWORD= os.getenv("SMTP_PASSWORD")
+SMTP_EMAIL = os.getenv("SMTP_EMAIL")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 
 # Socket initialization
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
 
-# Helper function to prevent response caching
 def no_cache(response):
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     response.headers['Pragma'] = 'no-cache'
@@ -59,30 +56,22 @@ def no_cache(response):
 #=================================================
 # === AUTHENTICATION DECORATORS ===
 #=================================================
-
-# JWT Authentication Decorator
-# This decorator checks for a valid JWT in the Authorization header
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         token = None
-        # jwt is passed in the request header
         if 'Authorization' in request.headers:
             auth_header = request.headers['Authorization']
             try:
-                # Split 'Bearer <token>'
                 token = auth_header.split(" ")[1]
             except IndexError:
                 return jsonify({'message': 'Bearer token malformed'}), 401
 
-        # return 401 if token is not passed
         if not token:
             return jsonify({'message': 'Token is missing!'}), 401
 
         try:
-            # decoding the payload to fetch the stored details
             data = jwt.decode(token, app.secret_key, algorithms=["HS256"])
-            # Pass user_id and role to the decorated function
             kwargs['user_id'] = data['user_id']
             kwargs['role'] = data['role']
         except jwt.ExpiredSignatureError:
@@ -92,16 +81,12 @@ def token_required(f):
         except Exception as e:
              return jsonify({'message': f'Token error: {str(e)}'}), 401
 
-        # returns the current logged in users context to the routes
         return f(*args, **kwargs)
-
     return decorated
 
-# Decorator to ensure the user has Admin privileges
 def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        # 'role' is injected by @token_required
         if 'role' not in kwargs or kwargs['role'] != 'Admin':
             return jsonify({'message': 'Admin access required'}), 403
         return f(*args, **kwargs)
@@ -111,8 +96,6 @@ def admin_required(f):
 #=================================================
 # === DATA FETCHING FUNCTIONS ===
 #=================================================
-
-# Fetches the 3 most recent access logs
 def get_last_3_logs():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -128,7 +111,6 @@ def get_last_3_logs():
     conn.close()
     return logs
 
-# Fetches the complete history of access logs
 def get_all_logs():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -143,7 +125,6 @@ def get_all_logs():
     conn.close()
     return logs
 
-# Fetches the 3 most recently registered users
 def get_last_3_users():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -153,7 +134,6 @@ def get_last_3_users():
     conn.close()
     return users
 
-# Fetches all registered users
 def get_all_users():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -167,20 +147,15 @@ def get_all_users():
 #=================================================
 # === PUBLIC API ENDPOINTS ===
 #=================================================
-
-# Dynamic role fetching for registration
 @app.route('/api/roles', methods=['GET'])
 def api_get_roles():
-    """Obtain all available roles from database"""
     try:
-        roles = get_all_roles() # Fetch roles from database
+        roles = get_all_roles()
         return jsonify(roles), 200
     except Exception as e:
         return jsonify({'message': f'Internal server error: {e}'}), 500
     
-# Checks if the password meets the minimum security requirements
 def validate_password(password):
-    """Checks if the password meets the minimum security requirements."""
     if len(password) < 8:
         return "Password must be at least 8 characters long."
     if not re.search(r"[A-Z]", password):
@@ -191,9 +166,8 @@ def validate_password(password):
         return "Password must contain at least one number."
     if not re.search(r"[!@#$%^&*.]", password):
         return "Password must contain at least one special character (!@#$%^&*)."
-    return None # No error
+    return None
 
-# Handles user registration requests
 @app.route('/api/register', methods=['POST'])
 def api_register():
     data = request.get_json()
@@ -228,11 +202,10 @@ def api_register():
         save_user(user_id, name, email, password, role, qr_image, last_qr_time, registered_at)
 
         try:
-            # Create JWT token
             payload = {
                 'user_id': user_id,
                 'role': role,
-                'exp': datetime.now(timezone.utc) + timedelta(hours=1)  # Token expires in 1 hour
+                'exp': datetime.now(timezone.utc) + timedelta(hours=1)
             }
             token = jwt.encode(payload, app.secret_key, algorithm="HS256")
 
@@ -243,8 +216,6 @@ def api_register():
     except Exception as e:
         return jsonify({'message': f'Internal server error: {e}'}), 500
 
-
-# Handles user login and token generation
 @app.route('/api/login', methods=['POST'])
 def api_login():
     data = request.get_json()
@@ -260,11 +231,10 @@ def api_login():
         return jsonify({'message': 'Invalid credentials'}), 401
 
     try:
-        # Create JWT token
         payload = {
             'user_id': user['id'],
             'role': user['role'],
-            'exp': datetime.now(timezone.utc) + timedelta(hours=1)  # Token expires in 1 hour
+            'exp': datetime.now(timezone.utc) + timedelta(hours=1)
         }
         token = jwt.encode(payload, app.secret_key, algorithm="HS256")
 
@@ -273,13 +243,9 @@ def api_login():
         return jsonify({'message': f'Error in token generation: {e}'}), 500
     
 
-# EDGE DEVICE ENDPOINTS (QR SCANNERS)
-
+# EDGE DEVICE ENDPOINTS
 @app.route('/api/access/scan', methods=['POST'])
 def api_access_scan():
-    """
-    Endpoint called by the door device with the QR content.
-    """
     data = request.get_json()
     
     if not data or 'qr_data' not in data or 'area' not in data:
@@ -288,10 +254,8 @@ def api_access_scan():
     qr_content = data['qr_data']
     target_area = data['area']
 
-    # Validate QR
     validation_result = verify_qr(qr_content, SIGNATURE_KEY, target_area)
 
-    # Prepare response data for the door device
     response_data = {
         "granted": validation_result['valid'],
         "reason": validation_result['reason'],
@@ -299,27 +263,21 @@ def api_access_scan():
         "role": validation_result['role']
     }
 
-    # Heavy processing (DB storage, AI analysis, alerting) is done in the background to not block the door response
     socketio.start_background_task(background_access_processing, validation_result, target_area)
 
-    # Return immediate response to the door device
     return jsonify(response_data), 200
     
 
 #=================================================
 # === PROTECTED API ENDPOINTS (USER) ===
 #=================================================
-
-# API Endpoint for Dashboard Data
-# Retrieves dashboard data for a specific user
 @app.route('/api/dashboard-data', methods=['GET'])
 @token_required
-def api_dashboard_data(user_id, role): # user_id and role are passed by the decorator
+def api_dashboard_data(user_id, role):
     try:
         conn = get_db_connection()
         cur = conn.cursor()
 
-        # Fetch user data
         cur.execute('SELECT name, email, role, qr_image, last_qr_time FROM users WHERE id = %s', (user_id,))
         user = cur.fetchone()
 
@@ -328,25 +286,21 @@ def api_dashboard_data(user_id, role): # user_id and role are passed by the deco
             conn.close()
             return jsonify({'message': 'User not found'}), 404
 
-        # Calculate remaining QR time
         last_qr_time = int(user['last_qr_time']) if user['last_qr_time'] else 0
-        qr_lifetime = 30 # seconds - should match frontend constant
+        qr_lifetime = 30
         now = int(time.time())
         remaining = qr_lifetime - (now - last_qr_time)
         if remaining < 0:
-            remaining = 0 # Clamp at 0
+            remaining = 0
 
-        # Convert QR image blob to base64
         try:
             image = Image.open(BytesIO(user['qr_image']))
             buffer = BytesIO()
             image.save(buffer, format="PNG")
             qr_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-        except Exception as img_err:
-             print(f"Error processing QR image: {img_err}") # Log error
-             qr_base64 = None # Send null if image processing fails
+        except Exception:
+            qr_base64 = None
 
-        # Fetch last successful access
         cur.execute('''
             SELECT access_time, area FROM logs
             WHERE user_id = %s AND entry_allowed IS TRUE
@@ -355,7 +309,6 @@ def api_dashboard_data(user_id, role): # user_id and role are passed by the deco
         last_access_record = cur.fetchone()
         last_access_str = f"{last_access_record['access_time']} / {last_access_record['area']}" if last_access_record else None
 
-        # Fetch access history (successful accesses)
         cur.execute('''
             SELECT access_time, area FROM logs
             WHERE user_id = %s AND entry_allowed IS TRUE
@@ -367,7 +320,6 @@ def api_dashboard_data(user_id, role): # user_id and role are passed by the deco
         cur.close()
         conn.close()
 
-        # Prepare response data
         response_data = {
             'id': user_id,
             'name': user['name'],
@@ -382,28 +334,21 @@ def api_dashboard_data(user_id, role): # user_id and role are passed by the deco
         return jsonify(response_data), 200
 
     except Exception as e:
-        # Log the exception e
-        print(f"Error fetching dashboard data: {e}") # Print error for debugging
-        # Close connection if it was opened and an error occurred
         if 'conn' in locals() and conn:
             cur.close()
             conn.close()
         return jsonify({'message': f'Internal server error: {str(e)}'}), 500
 
 
-# API Endpoint to refresh QR code
-# Generates a new QR code for the user
 @app.route('/api/refresh-qr', methods=['GET'])
 @token_required
-def api_refresh_qr(user_id, role): # user_id and role are passed by the decorator
+def api_refresh_qr(user_id, role):
     try:
         conn = get_db_connection()
         cur = conn.cursor()
 
-        # Generate new QR
         new_qr_bytes, timestamp = generate_qr(user_id, SIGNATURE_KEY)
 
-        # Update database
         cur.execute("UPDATE users SET qr_image = %s, last_qr_time = %s WHERE id = %s",
                    (new_qr_bytes, str(timestamp), user_id))
         conn.commit()
@@ -411,14 +356,11 @@ def api_refresh_qr(user_id, role): # user_id and role are passed by the decorato
         cur.close()
         conn.close()
 
-        # Convert new QR to base64 for response
         qr_base64 = base64.b64encode(new_qr_bytes).decode("utf-8")
 
         return jsonify({"qr_base64": qr_base64}), 200
 
     except Exception as e:
-        # Log the exception e
-        print(f"Error refreshing QR code: {e}") # Print error for debugging
         if 'conn' in locals() and conn:
            cur.close()
            conn.close()
@@ -428,18 +370,14 @@ def api_refresh_qr(user_id, role): # user_id and role are passed by the decorato
 #=================================================
 # === PROTECTED API ENDPOINTS (ADMIN) ===
 #=================================================
-
-# Endpoint for Admin Dashboard Data
-# Retrieves data for the main admin dashboard
 @app.route('/api/admin/dashboard-data', methods=['GET'])
-@token_required # Check for valid token (user is logged in)
-@admin_required # Check if user is admin
+@token_required
+@admin_required
 def api_admin_dashboard(user_id, role):
     try:
         last_3_logs = get_last_3_logs()
         last_3_users = get_last_3_users()
         
-        # Obtain admin name
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute('SELECT name FROM users WHERE id = %s', (user_id,))
@@ -448,7 +386,6 @@ def api_admin_dashboard(user_id, role):
         conn.close()
         admin_name = user['name'] if user else "Admin"
 
-        # Convert results (DictRow) to standard dicts for JSON serialization
         return jsonify({
             'admin_name': admin_name,
             'last_3_logs': [dict(log) for log in last_3_logs],
@@ -456,11 +393,8 @@ def api_admin_dashboard(user_id, role):
         }), 200
 
     except Exception as e:
-        print(f"Error fetching admin dashboard data: {e}")
         return jsonify({'message': f'Internal server error: {str(e)}'}), 500
 
-# Endpoint to download logs table
-# Generates a CSV file of all access logs
 @app.route('/api/admin/logs/download', methods=['GET'])
 @token_required
 @admin_required
@@ -483,7 +417,6 @@ def api_download_logs(user_id, role):
             ])
 
         output.seek(0)
-        
         mem = BytesIO()
         mem.write(output.getvalue().encode('utf-8'))
         mem.seek(0)
@@ -496,12 +429,8 @@ def api_download_logs(user_id, role):
             download_name='logs.csv'
         )
     except Exception as e:
-        print(f"Error downloading logs: {e}")
         return jsonify({'message': f'Internal server error: {str(e)}'}), 500
 
-
-# Endpoint to download users table
-# Generates a CSV file of all registered users
 @app.route('/api/admin/users/download', methods=['GET'])
 @token_required
 @admin_required
@@ -523,7 +452,6 @@ def api_download_users(user_id, role):
             ])
 
         output.seek(0)
-        
         mem = BytesIO()
         mem.write(output.getvalue().encode('utf-8'))
         mem.seek(0)
@@ -536,19 +464,9 @@ def api_download_users(user_id, role):
             download_name='users.csv'
         )
     except Exception as e:
-        print(f"Error downloading users: {e}")
         return jsonify({'message': f'Internal server error: {str(e)}'}), 500
-    
-# Endpoint to render admin security dashboard
-@app.route('/api/admin/security')
-def security_dashboard():
-    """Renders main security page."""
-    return render_template('security.html')
-
 
 # --- SECURITY ENDPOINTS ---
-
-# Fetches logs flagged as suspicious based on risk score
 @app.route('/api/admin/logs/suspicious')
 def get_suspicious_logs():
     threshold = float(os.getenv('ANOMALY_THRESHOLD', -0.15))
@@ -568,7 +486,6 @@ def get_suspicious_logs():
              'time': str(r[4]), 'score': r[5], 'reason': r[6]} for r in logs]
     return jsonify(data)
 
-# Fetches logs where entry was denied
 @app.route('/api/admin/logs/denied')
 def get_denied_logs():
     conn = get_db_connection()
@@ -587,7 +504,6 @@ def get_denied_logs():
              'time': str(r[4]), 'reason': r[5]} for r in logs]
     return jsonify(data)
 
-# CRUD endpoint for managing access rules
 @app.route('/api/admin/rules/access', methods=['GET', 'POST', 'DELETE'])
 def manage_access_rules():
     conn = get_db_connection()
@@ -615,7 +531,6 @@ def manage_access_rules():
         conn.close()
         return jsonify({'status': 'deleted'})
 
-# CRUD endpoint for managing alert rules
 @app.route('/api/admin/rules/alerts', methods=['GET', 'POST', 'DELETE'])
 def manage_alert_rules():
     conn = get_db_connection()
@@ -642,23 +557,17 @@ def manage_alert_rules():
         conn.commit()
         conn.close()
         return jsonify({'status': 'deleted'})
-    
 
-# Critical Threshold: Above this risk score, system is "Critical" (default to 10)
 CRITICAL_THRESHOLD = 10
-
-# Configurable Threshold: How many low-severity errors constitute a threat? (default to 3)
 REPETITION_THRESHOLD = 3 
 
-# Toggle Threat Status
-# Toggles or sets the threat status of a log entry
 @app.route('/api/admin/log/<int:log_id>/toggle-threat', methods=['POST'])
 @token_required
 @admin_required
 def toggle_threat_status(user_id, role, log_id):
     try:
         req_data = request.get_json()
-        action = req_data.get('action') # 'resolve' or 'escalate'
+        action = req_data.get('action')
 
         conn = get_db_connection()
         related_ids = find_cluster_ids_for_log(conn, log_id)
@@ -669,20 +578,16 @@ def toggle_threat_status(user_id, role, log_id):
         cur = conn.cursor()
         
         if action == 'resolve':
-            # Mark as safe (Reviewed = True, Threat = False)
             new_threat = False
             new_review = True
         elif action == 'escalate':
-            # Mark as threat (Reviewed = False, Threat = True)
             new_threat = True
             new_review = False
         else:
-            # Fallback (Toggle based on current state)
             cur.execute("SELECT is_threat, is_reviewed FROM logs WHERE id = %s", (log_id,))
             log_state = cur.fetchone()
             if not log_state: return jsonify({'message': 'Log not found'}), 404
             
-            # Extract values safely
             current_threat = log_state['is_threat'] if isinstance(log_state, dict) or hasattr(log_state, 'keys') else log_state[0]
             current_reviewed = log_state['is_reviewed'] if isinstance(log_state, dict) or hasattr(log_state, 'keys') else log_state[1]
             
@@ -711,11 +616,8 @@ def toggle_threat_status(user_id, role, log_id):
         }), 200
         
     except Exception as e:
-        print(f"Error toggling threat: {e}")
         return jsonify({'message': f'Error toggling status: {str(e)}'}), 500
 
-# Mark as Reviewed Endpoint
-# Marks a specific log cluster as reviewed
 @app.route('/api/admin/log/<int:log_id>/review', methods=['POST'])
 @token_required
 @admin_required
@@ -746,8 +648,6 @@ def toggle_review_status(user_id, role, log_id):
         return jsonify({'message': f'Error updating review status: {str(e)}'}), 500
 
 
-# Endpoint to toggle System Lockdown
-# Toggles the global system lockdown state
 @app.route('/api/admin/system-lockdown', methods=['POST'])
 @token_required
 @admin_required
@@ -756,11 +656,9 @@ def toggle_system_lockdown(user_id, role):
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # Check current status in system_config table
         cur.execute("SELECT value_data FROM system_config WHERE key_name = 'system_lockdown'")
         row = cur.fetchone()
         
-        # Determine new status (Toggle)
         current_status = False
         if row:
              val = row['value_data'] if isinstance(row, dict) or hasattr(row, 'keys') else row[0]
@@ -769,7 +667,6 @@ def toggle_system_lockdown(user_id, role):
         new_status = not current_status
         new_status_str = 'true' if new_status else 'false'
         
-        # Update or Insert based on existence
         if row:
             cur.execute("UPDATE system_config SET value_data = %s WHERE key_name = 'system_lockdown'", (new_status_str,))
         else:
@@ -782,7 +679,7 @@ def toggle_system_lockdown(user_id, role):
         try:
             send_lockdown_email(new_status)
         except Exception:
-            pass # Fail silently on email
+            pass 
         
         return jsonify({
             'status': 'success', 
@@ -790,27 +687,22 @@ def toggle_system_lockdown(user_id, role):
         }), 200
         
     except Exception as e:
-        print(f"Error toggling lockdown: {e}")
         return jsonify({'message': f'Error toggling lockdown: {str(e)}'}), 500
     
 
-SESSION_TIMEOUT_MINUTES = 10 # Time window to group logs of the same user
-# Risk Score Map
+SESSION_TIMEOUT_MINUTES = 10 
 RISK_SCORES = {
-    'FORGED_QR': 10,     # Hack attempt / Security breach
-    'MALFORMED_QR': 10,  # Fuzzing / Hack attempt
-    'SYSTEM_LOCKDOWN': 10, # Serious incident when lockdown is active and access is attempted
-    'UNKNOWN_USER': 5,   # Potential brute force or deleted user access
-    'AREA_VIOLATION': 3, # Unauthorized internal access (Policy)
-    'TIME_VIOLATION': 1, # Process issue
-    'EXPIRED_QR': 1,     # Usability issue
-    'AI_ANOMALY': 8,     # Suspicious behavior detected by AI
+    'FORGED_QR': 10,     
+    'MALFORMED_QR': 10,  
+    'SYSTEM_LOCKDOWN': 10, 
+    'UNKNOWN_USER': 5,   
+    'AREA_VIOLATION': 3, 
+    'TIME_VIOLATION': 1, 
+    'EXPIRED_QR': 1,     
+    'AI_ANOMALY': 8,     
     'UNKNOWN': 1
 }
 
-    
-# Main Security Dashboard Data Endpoint
-# Aggregates complex security data and stats for the admin security dashboard
 @app.route('/api/admin/security-data', methods=['GET'])
 @token_required
 @admin_required
@@ -818,35 +710,24 @@ def api_security_dashboard_data(user_id, role):
     try:
         conn = get_db_connection()
         
-        # HOUSEKEEPING: Auto-review old safe logs
         auto_review_old_logs(conn)
         
         cur = conn.cursor()
-
-        # Check Lockdown Status
         cur.execute("SELECT value_data FROM system_config WHERE key_name = 'system_lockdown'")
         row_lockdown = cur.fetchone()
         system_lockdown = row_lockdown['value_data'] == 'true' if row_lockdown else False
 
-        # Admin Info
         cur.execute('SELECT name FROM users WHERE id = %s', (user_id,))
         user_row = cur.fetchone()
         admin_name = user_row['name'] if user_row else "Admin"
 
-        # Time Threshold (24h)
         yesterday_obj = datetime.now() - timedelta(days=1)
         yesterday_str = yesterday_obj.strftime("%Y-%m-%d %H:%M:%S")
 
-        # Blocked Counters (Raw count of ALL blocked attempts in 24h)
         cur.execute("SELECT COUNT(*) as blocked FROM logs WHERE entry_allowed IS FALSE AND access_time >= %s", (yesterday_str,))
         row = cur.fetchone()
         blocked_24h = row['blocked'] if row else 0
-
-        # --- SMART LOGIC STARTS HERE ---
         
-        # Fetch logs for analysis
-        # Get ALL logs from last 24h OR any older logs that are still threats and unreviewed
-        # This ensures active threats don't disappear just because 24h passed.
         cur.execute("""
             SELECT id, user_id, role, area, access_time, entry_allowed, reason, error_code, is_threat, is_reviewed, is_anomaly 
             FROM logs 
@@ -858,18 +739,9 @@ def api_security_dashboard_data(user_id, role):
         """, (yesterday_str,))
         
         all_logs = cur.fetchall()
-        
-        # --- TEMPORAL CLUSTERING ---
-        
         incidents = []
         
-        # We need to group logs that belong to the same "session" of errors.
-        # Key for grouping: (user_id, error_code)
-        # Constraint: Time difference < SESSION_TIMEOUT_MINUTES
-        
         if all_logs:
-
-            # Add AI flagged anomalies to the mix
             cleaned_logs = []
             for log in all_logs:
                 d_log = dict(log)
@@ -878,25 +750,21 @@ def api_security_dashboard_data(user_id, role):
                     d_log['error_code'] = 'AI_ANOMALY'
                     d_log['reason'] = 'Behavioral Anomaly Detected'
                 
-                # Fallback for None error codes
                 if not d_log.get('error_code'):
                      d_log['error_code'] = 'UNKNOWN'
                      
                 cleaned_logs.append(d_log)
 
-            # Initialize the first cluster with the first log
             current_cluster = {
                 'logs': [dict(cleaned_logs[0])],
                 'user_id': cleaned_logs[0]['user_id'],
                 'error_code': cleaned_logs[0]['error_code'],
-                'last_time': cleaned_logs[0]['access_time'] # Most recent time in this cluster
+                'last_time': cleaned_logs[0]['access_time'] 
             }
             
-            # Iterate starting from the second log
             for i in range(1, len(cleaned_logs)):
                 log = dict(cleaned_logs[i])
                 
-                # Check parsing of timestamp (DB drivers sometimes return str, sometimes datetime)
                 log_time = log['access_time']
                 if isinstance(log_time, str):
                     log_time = datetime.strptime(log_time, "%Y-%m-%d %H:%M:%S")
@@ -905,7 +773,6 @@ def api_security_dashboard_data(user_id, role):
                 if isinstance(prev_time, str):
                     prev_time = datetime.strptime(prev_time, "%Y-%m-%d %H:%M:%S")
 
-                # Calculate time difference
                 time_diff = prev_time - log_time
                 
                 is_same_user = log['user_id'] == current_cluster['user_id']
@@ -913,10 +780,8 @@ def api_security_dashboard_data(user_id, role):
                 is_within_window = time_diff < timedelta(minutes=SESSION_TIMEOUT_MINUTES)
                 
                 if is_same_user and is_same_error and is_within_window:
-                    # Add to current cluster
                     current_cluster['logs'].append(log)
                 else:
-                    # Seal the previous cluster and start a new one
                     incidents.append(current_cluster)
                     current_cluster = {
                         'logs': [log],
@@ -924,12 +789,8 @@ def api_security_dashboard_data(user_id, role):
                         'error_code': log['error_code'],
                         'last_time': log['access_time']
                     }
-            
-            # Append the final cluster
             incidents.append(current_cluster)
 
-        # --- RISK ANALYSIS ON CLUSTERS ---
-        
         total_risk_score = 0
         active_threats_set = set()
         recent_incidents_response = []
@@ -937,32 +798,25 @@ def api_security_dashboard_data(user_id, role):
         for incident in incidents:
             logs_in_group = incident['logs']
             count = len(logs_in_group)
-            representative_log = logs_in_group[0] # The most recent one
+            representative_log = logs_in_group[0] 
             
             u_id = representative_log['user_id']
             error_code = representative_log['error_code']
             reason = representative_log['reason']
             
-            # Calculate Base Score
             base_score = RISK_SCORES.get(error_code, 1)
             
-            # Calculate Severity based on repetition within the short time window
             severity = 'low'
             if base_score >= 10: 
                 severity = 'high'
             elif base_score >= 3: 
                 severity = 'medium'
             
-            # Escalation logic: Brute force detection
             if count >= 3 and severity == 'low':
                 severity = 'medium'
             if count >= 5:
                 severity = 'high'
 
-            # Determine Threat Status
-            # Check if ANY log in this group is marked as unreviewed threat in DB
-            # OR if our calculated severity is high
-            
             db_threat_flag = any(l.get('is_threat') for l in logs_in_group)
             db_anomaly_flag = any(l.get('is_anomaly') for l in logs_in_group)
             all_reviewed = all(l.get('is_reviewed') for l in logs_in_group)
@@ -975,17 +829,14 @@ def api_security_dashboard_data(user_id, role):
             if is_active:
                 status = 'pending'
                 active_threats_set.add(u_id)
-                total_risk_score += base_score * count # Simple additive risk
+                total_risk_score += base_score * count
             else:
                 status = 'resolved'
 
-            # Add to Response List
-            # Only show if it's pending OR recent (< 24h)
             incident_time_str = str(incident['last_time'])
             is_recent = incident_time_str >= yesterday_str
 
             if (status == 'pending' or is_recent) and len(recent_incidents_response) < 20:
-                 # Visual distinction for AI
                 display_type = reason
                 if error_code == 'AI_ANOMALY':
                     display_type = f"Possible Threat: {reason}"
@@ -993,7 +844,7 @@ def api_security_dashboard_data(user_id, role):
                     display_type = f"{reason} ({count} attempts in 10 min)"
                 
                 recent_incidents_response.append({
-                    'id': representative_log['id'], # Use ID of the latest log in group
+                    'id': representative_log['id'],
                     'severity': severity,
                     'type': display_type,
                     'description': error_code,
@@ -1005,11 +856,8 @@ def api_security_dashboard_data(user_id, role):
                     'is_threat': db_threat_flag
                 })
 
-        # Sort incidents by time DESC before sending
         recent_incidents_response.sort(key=lambda x: x['timestamp'], reverse=True)
-        # Limit to top 10 after sorting
         recent_incidents_response = recent_incidents_response[:10]
-
         
         return no_cache(jsonify({
             'admin_name': admin_name,
@@ -1024,8 +872,6 @@ def api_security_dashboard_data(user_id, role):
         })), 200
 
     except Exception as e:
-        import traceback
-        traceback.print_exc() # This will print the full error to your terminal
         print(f"CRITICAL ERROR in security_dashboard: {e}")
         return jsonify({'message': f'Internal Server Error: {str(e)}'}), 500
     
@@ -1033,11 +879,7 @@ def api_security_dashboard_data(user_id, role):
 #=================================================
 # === HELPER FUNCTIONS ===
 #=================================================
-
 def check_should_notify_hard_rule(qr_data, target_area):
-    """
-    Checks if a denied access has to be notified according to the alert_rules.
-    """
     if qr_data['valid']:
         return False
 
@@ -1068,15 +910,10 @@ def check_should_notify_hard_rule(qr_data, target_area):
     return should_notify
 
 def background_access_processing(qr_data, target_area):
-    """
-    Executed on the background to not block the door while the AI analyzes.
-    Optimized: DB storage and WebSockets run FIRST to avoid UI delays caused by SMTP.
-    """
     risk_score = 0.0
     is_anomaly = False
     is_threat = False
 
-    # Variables to control alert sending after DB storage and WebSocket notifications are done
     should_send_anomaly_alert = False
     should_send_hard_rule_alert = False
 
@@ -1089,23 +926,20 @@ def background_access_processing(qr_data, target_area):
         'reason': qr_data['reason']
     }
 
-    # AI analysis and rule checking
     if qr_data['valid']:
         try:
             risk_score, is_anomaly = predict_anomaly(log_entry)
             if is_anomaly:
                 is_threat = True
-                print(f"[BACKGROUND] ANOMALY DETECTED! Score: {risk_score:.4f}")
+                print(f"[AI] ANOMALY DETECTED. Score: {risk_score:.4f}")
                 should_send_anomaly_alert = True 
         except Exception as e:
             print(f"Error during AI analysis: {e}")
     else:
         if check_should_notify_hard_rule(qr_data, target_area):
             log_entry['reason'] = f"HARD RULE: {qr_data['reason']}"
-            # En lloc d'enviar el correu aquí, activem la variable
             should_send_hard_rule_alert = True
 
-    # Database storage and WebSockets
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -1121,20 +955,20 @@ def background_access_processing(qr_data, target_area):
         cur.close()
         conn.close()
 
-        # Notify dashboard of new log (with WebSocket)
+        print(f"[WEBSOCKET] Emitting dashboard update for user {qr_data['user_id']}...")
         socketio.emit('dashboard_update', {
             'type': 'new_log', 
             'timestamp': time.time(),
             'user_id': qr_data['user_id']
-        }, broadcast=True)
+        })
         
         if is_threat or is_anomaly:
-            socketio.emit('security_update', {'type': 'new_threat', 'msg': 'Anomaly detected'}, broadcast=True)
+            print("[WEBSOCKET] Emitting security alert...")
+            socketio.emit('security_update', {'type': 'new_threat', 'msg': 'Anomaly detected'})
 
     except Exception as e:
         print(f"Error storing record in DB: {e}")
 
-    # Email Sending
     if should_send_anomaly_alert:
         socketio.start_background_task(send_anomaly_alert, log_entry, risk_score)
         
@@ -1142,13 +976,7 @@ def background_access_processing(qr_data, target_area):
         socketio.start_background_task(send_access_denied_alert, log_entry)
 
 def find_cluster_ids_for_log(conn, target_log_id):
-    """
-    Finds log IDs belonging to the same cluster.
-    Different error types from same user in same window are SPLIT.
-    """
     cur = conn.cursor()
-    
-    # Fetch Target Log Details
     cur.execute("SELECT id, user_id, error_code, is_anomaly, access_time FROM logs WHERE id = %s", (target_log_id,))
     target = cur.fetchone()
     
@@ -1156,7 +984,6 @@ def find_cluster_ids_for_log(conn, target_log_id):
         cur.close()
         return []
 
-    # Handle Tuple vs Dict
     if isinstance(target, dict) or hasattr(target, 'keys'):
         t_id = target['id']
         t_user_id = target['user_id']
@@ -1191,7 +1018,6 @@ def find_cluster_ids_for_log(conn, target_log_id):
     target_id_str = str(t_id)
     if not rows: return [target_id_str]
 
-    # Clustering Logic
     logs = []
     for r in rows:
         d = dict(r)
@@ -1202,7 +1028,6 @@ def find_cluster_ids_for_log(conn, target_log_id):
 
     target_cluster_ids = []
     
-    # Build clusters (Since we filtered by error type in SQL, we only check time now)
     if logs:
         current_cluster = [logs[0]]
         cluster_head_time = logs[0]['access_time']
@@ -1233,14 +1058,7 @@ def find_cluster_ids_for_log(conn, target_log_id):
 
     return target_cluster_ids
 
-# Helper to automatically review old non-threatening logs
 def auto_review_old_logs(conn):
-    """
-    Automatically marks as 'reviewed' (resolved) logs that are:
-    1. Older than 24h
-    2. Marked as NOT a threat (is_threat = FALSE)
-    3. Currently unreviewed
-    """
     try:
         cur = conn.cursor()
         yesterday_obj = datetime.now() - timedelta(days=1)
@@ -1257,13 +1075,10 @@ def auto_review_old_logs(conn):
         conn.commit()
         cur.close()
     except Exception as e:
-        print(f"Error in auto-review job: {e}")
-
+        pass # Silently pass automated housekeeping
 
 def send_lockdown_email(active):
-    """Sends an email notification about lockdown status change."""
     if not SMTP_EMAIL or not SMTP_PASSWORD:
-        print("Skipping email: Credentials not configured.")
         return
 
     admins = get_admin_emails()
@@ -1293,49 +1108,19 @@ def send_lockdown_email(active):
         """
 
     try:
-        # Create message
         msg = MIMEMultipart()
         msg['From'] = SMTP_EMAIL
-        msg['To'] = ", ".join(admins) # Send to all admins
+        msg['To'] = ", ".join(admins)
         msg['Subject'] = subject
         msg.attach(MIMEText(body, 'plain'))
 
-        # Send via SMTP
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
         server.login(SMTP_EMAIL, SMTP_PASSWORD)
         server.sendmail(SMTP_EMAIL, admins, msg.as_string())
         server.quit()
-        print(f"Lockdown email sent to {len(admins)} admins.")
     except Exception as e:
         print(f"Failed to send email: {e}")
-
-#=================================================
-# === WEBSOCKET IMPLEMENTATION ===
-#=================================================
-@app.route('/api/internal/trigger-update', methods=['POST'])
-def internal_trigger_update():
-    """
-    Called by QR_scanning.py when a new access event is logged.
-    It emits a websocket event to all connected clients to trigger dashboard updates.
-    """
-    data = request.get_json() or {}
-    update_type = data.get('type', 'new_log')
-    user_id = data.get('user_id')
-    
-    # Send update to all clients connected to the dashboard
-    socketio.emit('dashboard_update', {
-        'type': update_type, 
-        'timestamp': time.time(),
-        'user_id': user_id,
-        })
-    
-    # Send update to all clients connected to the security page if it's a threat
-    if data.get('is_threat'):
-        socketio.emit('security_update', {'type': 'new_threat', 'msg': 'Anomaly detected'})
-
-    return jsonify({'status': 'ok'}), 200
-
 
 #=================================================
 # === APPLICATION START ===
@@ -1358,4 +1143,5 @@ if __name__ == "__main__":
     print(f"Initializing Flask server in mode: {env.upper()}")
     print(f"WebSocket activated on port {port}...")
 
-    socketio.run(app, host="0.0.0.0", port=port, debug=is_debug)
+    # For gevent/production stability, debug and use_reloader are disabled
+    socketio.run(app, host="0.0.0.0", port=port, debug=False, use_reloader=False)

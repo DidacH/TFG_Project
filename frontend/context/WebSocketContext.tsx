@@ -26,7 +26,6 @@ export const WebSocketProvider = ({ children }: { children: React.ReactNode }) =
       const newSocket = io(API_URL, {
         transports: ['websocket'],
         withCredentials: true,
-        // Opcional: Pots enviar el token en l'auth del socket si el backend ho requereix
         // auth: { token } 
       });
 

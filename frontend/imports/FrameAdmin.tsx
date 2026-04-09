@@ -138,39 +138,34 @@ export default function FrameAdmin() {
   useEffect(() => {
         if (!socket) return;
 
-        // Farem servir un Ref per evitar el solapament
         let isFetching = false;
 
         const handleUpdate = async (data: any) => {
-            console.log("New data received via WebSocket", data);
-            if (isFetching) return; // Si ja està actualitzant, ignorem peticions repetides
+            
+            if (isFetching) {
+                return; 
+            }
             
             isFetching = true;
-            await fetchAdminData(true); // Canvia a fetchSecurityData(true) a l'altra pàgina
-            isFetching = false;
+            try {
+                await fetchAdminData(true); 
+            } finally {
+                isFetching = false; 
+            }
         };
 
-        // 1. Escoltador per a nous escanejos normals (Canvia-ho pel de Security si ets a l'altra web)
         socket.on("dashboard_update", handleUpdate);
         
-        // *A FrameSecurity, recorda afegir el teu escotador extra per "security_update" aquí!*
-
-        // 2. Simplificació de la reconnexió: Només sincronitzem si realment hi ha hagut un tall, 
-        // no cada vegada que React torna a muntar l'efecte.
         const handleReconnect = () => {
-            console.log("🔄 Socket reconectat després d'una caiguda. Sincronitzant...");
             handleUpdate({ type: 'reconnect' });
         };
         
-        // Nota: Fem servir 'reconnect' (o 'connect') però sense forçar una crida extra 
-        // si el socket ja estava connectat abans d'arribar aquí.
         socket.on("connect", handleReconnect);
 
-        // Neteja pura
         return () => {
             socket.off("dashboard_update", handleUpdate);
             socket.off("connect", handleReconnect);
-            // *A FrameSecurity, fes l'off de "security_update" també!*
+
         };
     }, [socket, fetchAdminData]);
 
