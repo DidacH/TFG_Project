@@ -58,7 +58,7 @@ export default function FrameDashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false); 
   const isRefreshingRef = useRef(false); 
   const isInitialLoadDone = useRef(false); 
-  const expirationTimeRef = useRef<number | null>(null); // NOU: Guarda l'hora exacta de caducitat (Timestamp absolut)
+  const expirationTimeRef = useRef<number | null>(null); // Store absolute expiration time in milliseconds
   const { socket } = useWebSocket();
   const userIdRef = useRef<string | undefined>(data?.id);
 
@@ -105,12 +105,12 @@ export default function FrameDashboard() {
             throw new Error(json.message || `Failed to ${isInitialLoad ? 'load' : 'refresh'} dashboard data.`);
         }
 
-        // NOU: Actualitzem el rellotge absolut
+        // Update absoulte clock
         if (isInitialLoad || fetchOnly) {
             setData(json);
             if (json.remaining !== undefined) {
                 setRemainingTime(json.remaining);
-                // Calculem a quina hora exacta morirà aquest QR
+                // Compute absolute expiration time based on current time + remaining seconds
                 expirationTimeRef.current = Date.now() + (json.remaining * 1000); 
             }
         } else {
@@ -135,7 +135,7 @@ export default function FrameDashboard() {
   }, [data?.id]);
 
     
-  // NOU: Lògica de compte enrere basada en el temps real matemàtic
+  // Countdown logic based on absolute expiration time
   useEffect(() => {
     if (loading || error || !data || isRefreshing) return; 
 
@@ -143,14 +143,14 @@ export default function FrameDashboard() {
         if (!expirationTimeRef.current) return;
 
         const now = Date.now();
-        const timeDiff = expirationTimeRef.current - now; // Mil·lisegons restants
+        const timeDiff = expirationTimeRef.current - now; // Miliseconds remaining until expiration
         
-        // Convertim a segons (arrodonint cap amunt) i evitem números negatius
+        // Convert to seconds and round up, ensuring it doesn't go negative
         const newRemaining = Math.max(0, Math.ceil(timeDiff / 1000));
         
         setRemainingTime(newRemaining);
 
-        // Si el temps de vida arriba a 2 segons (o el navegador estava adormit i ara és 0), refresquem
+        // If the remaining time reaches 2 seconds (or the browser was asleep and now it's 0), refresh
         if (newRemaining <= 2 && !isRefreshingRef.current) {
             refreshQr(false); 
         }
@@ -160,7 +160,6 @@ export default function FrameDashboard() {
   }, [loading, error, data, isRefreshing, refreshQr]);
 
 
-  // Lògica simple per assegurar la càrrega inicial
   useEffect(() => {
     if (data?.qr_base64 && !isInitialLoadDone.current) {
         isInitialLoadDone.current = true; 

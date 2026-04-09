@@ -1136,12 +1136,11 @@ if __name__ == "__main__":
     print("Initializing AI model...")
     try:
         load_or_train_model()
-        print("AI model prepared and loaded into memory.")
+        print("✅ AI model prepared and loaded into memory.")
     except Exception as e:
-        print(f"Warning: Failed to load AI model: {e}")
+        print(f"⚠️ Warning: Failed to load AI model: {e}")
 
-    print(f"Initializing Flask server in mode: {env.upper()}")
-    print(f"WebSocket activated on port {port}...")
+    print(f"🚀 Initializing Flask server in mode: {env.upper()}")
+    print(f"🔌 WebSocket activated on port {port}...")
 
-    # For gevent/production stability, debug and use_reloader are disabled
-    socketio.run(app, host="0.0.0.0", port=port, debug=False, use_reloader=False)
+    socketio.run(app, host="0.0.0.0", port=port, debug=is_debug, use_reloader=False)
