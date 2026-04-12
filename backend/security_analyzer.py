@@ -23,7 +23,7 @@ MODEL_FILE = 'security_model_data.pkl'
 model = None
 scaler = None
 label_encoders = {}
-FEATURE_COLUMNS = ['role_encoded', 'area_encoded', 'hour', 'weekday', 'is_admin']
+FEATURE_COLUMNS = ['role_encoded', 'area_encoded', 'hour', 'weekday', 'is_admin', 'time_since_last_access', 'access_frequency_1h']
 raw_threshold = os.getenv("ANOMALY_THRESHOLD", "-0.15") # Threshold for flagging anomalies
 
 try:
@@ -45,225 +45,124 @@ def save_model_artifacts():
         pickle.dump(artifacts, f)
     print(f"Model and artifacts stored in {MODEL_FILE}")
 
-def _get_dataset_for_training():
+def preprocess_data(df, is_training=False):
     """
-    Generate a synthetic dataset with example user's normal behaviour to train the model.
+    Feature engineering and scaling.
+    Calculates time-based features and encodes categories.
     """
-    
-    NUM_SAMPLES = 1000
-    start_date = datetime.now() - timedelta(days=60) # Last 2 months
-    
-    data = []
-
-    # Definitions of roles and accesses
-    
-    roles_config = {
-        'Student': {
-            'areas': ['area_1', 'area_4', 'area_cafeteria'],
-            'weights': [0.6, 0.3, 0.1], 
-            'hours_mean': 11,
-            'hours_std': 3,
-            'weekend_prob': 0.05
-        },
-        'Professor': {
-            'areas': ['area_1', 'area_2', 'area_cafeteria'],
-            'weights': [0.4, 0.5, 0.1],
-            'hours_mean': 10,
-            'hours_std': 4, 
-            'weekend_prob': 0.02
-        },
-        'Admin': {
-            'areas': ['area_2', 'area_3'],
-            'weights': [0.7, 0.3],
-            'hours_mean': 9,
-            'hours_std': 2,
-            'weekend_prob': 0.01
-        },
-        'Staff': {
-            'areas': ['area_1', 'area_2', 'area_3', 'area_4', 'area_5'],
-            'weights': [0.2, 0.2, 0.2, 0.2, 0.2],
-            'hours_mean': 16,
-            'hours_std': 4,
-            'weekend_prob': 0.2
-        }
-    }
-
-    user_pool = {
-        'Student': [f'student_{i}@univ.edu' for i in range(1, 50)],
-        'Professor': [f'prof_{i}@univ.edu' for i in range(1, 10)],
-        'Admin': [f'admin_{i}@univ.edu' for i in range(1, 3)],
-        'Staff': [f'staff_{i}@univ.edu' for i in range(1, 5)]
-    }
-
-    for _ in range(NUM_SAMPLES):
-        # Choose role based on general distribution
-        role = random.choices(
-            ['Student', 'Professor', 'Admin', 'Staff'], 
-            weights=[0.7, 0.15, 0.05, 0.10]
-        )[0]
-        
-        config = roles_config[role]
-        
-        # Select user 
-        email = random.choice(user_pool[role])
-        user_id = email.split('@')[0]
-        
-        # Select area based on role probabilities
-        area = random.choices(config['areas'], weights=config['weights'])[0]
-        
-        # Generate timestamp
-        random_day = start_date + timedelta(days=random.randint(0, 60))
-        
-        # Adjust weekend access probability
-        if random_day.weekday() >= 5 and random.random() > config['weekend_prob']:
-            random_day -= timedelta(days=2)
-            
-        # Generate time of day
-        hour_offset = int(random.gauss(config['hours_mean'], config['hours_std']))
-        hour_offset = max(0, min(23, hour_offset)) # Limit 0-23h
-        
-        minute_offset = random.randint(0, 59)
-        access_time = random_day.replace(hour=hour_offset, minute=minute_offset, second=0)
-        
-        data.append({
-            'user_id': user_id,
-            'email': email,
-            'role': role,
-            'area': area,
-            'access_time': access_time
-        })
-
-    # Convert to DataFrame
-    df = pd.DataFrame(data)
-    
-    # Add some anomalies
-    anomalies = [
-        {'user_id': 'student_99', 'email': 'bad_student@univ.edu', 'role': 'Student', 'area': 'area_3', 'access_time': start_date.replace(hour=3, minute=0)},
-        {'user_id': 'admin_01', 'email': 'admin_1@univ.edu', 'role': 'Admin', 'area': 'area_1', 'access_time': start_date.replace(hour=23, minute=59)}, # Admin a classe a mitjanit
-    ]
-    df = pd.concat([df, pd.DataFrame(anomalies)], ignore_index=True)
-    
-    # Order by access_time
-    df = df.sort_values(by='access_time').reset_index(drop=True)
-    
-    return df
-
-def preprocess_data(df):
-    """ Applys preprocessing steps to the dataframe."""
     global label_encoders, scaler
     
-    # Time-based feature engineering
+    # Basic time features
+    df['access_time'] = pd.to_datetime(df['access_time'])
     df['hour'] = df['access_time'].dt.hour
-    df['weekday'] = df['access_time'].dt.dayofweek # Monday=0, Sunday=6
-
-    # Training code: Adjust and transform categorical columns
-    # Prediction code: Only transform categorical columns using existing encoders
-    fit_and_transform = (model is None) 
+    df['weekday'] = df['access_time'].dt.dayofweek
     
-    # Role and area encoding
+    # is_admin feature to distinguish admin users (who have more flexible access patterns)
+    df['is_admin'] = df['role'].apply(lambda x: 1 if x == 'Admin' else 0)
+
+    # Encoding (Role & Area)
     for col in ['role', 'area']:
         encoder = label_encoders.get(col, LabelEncoder())
-        if fit_and_transform:
+        if is_training:
             df[f'{col}_encoded'] = encoder.fit_transform(df[col])
             label_encoders[col] = encoder
         else:
-            # Use existing encoder and handle unseen labels
-            def safe_transform(val):
-                try:
-                    return encoder.transform([val])[0]
-                except ValueError:
-                    # Assign high value for unseen labels
-                    return len(encoder.classes_) 
-            
-            # Create a new column with if it does not appear in the training set
-            df[f'{col}_encoded'] = df[col].apply(safe_transform)
+            # Handle unknown labels during prediction
+            df[f'{col}_encoded'] = df[col].apply(
+                lambda x: encoder.transform([x])[0] if x in encoder.classes_ else len(encoder.classes_)
+            )
 
-    # Binary feature: is_admin
-    df['is_admin'] = df['role'].apply(lambda x: 1 if x == 'Admin' else 0)
-
-    # Numerical feature scaling (hour, weekday)
-    if fit_and_transform:
+    # Scaling numerical features
+    cols_to_scale = ['hour', 'weekday', 'time_since_last_access', 'access_frequency_1h']
+    if is_training:
         scaler = StandardScaler()
-        df[['hour', 'weekday']] = scaler.fit_transform(df[['hour', 'weekday']])
+        df[cols_to_scale] = scaler.fit_transform(df[cols_to_scale])
     else:
-        df[['hour', 'weekday']] = scaler.transform(df[['hour', 'weekday']])
+        df[cols_to_scale] = scaler.transform(df[cols_to_scale])
 
     return df
 
-def train_security_model(dataset = _get_dataset_for_training()):
-    """ Train the model using log data (Isolation Forest) """
+def train_security_model(dataset: pd.DataFrame):
+    """
+    Trains the Isolation Forest using a provided DataFrame.
+    The dataset should include: role, area, access_time, time_since_last_access, access_frequency_1h.
+    """
     global model
-    df_train = dataset
-    df_processed = preprocess_data(df_train)
+    
+    print("Starting security model training...")
+    df_processed = preprocess_data(dataset, is_training=True)
     
     X_train = df_processed[FEATURE_COLUMNS]
-
-    # Isolation Forest: Good for anomaly detection in high-dimensional data. Also good since we don't have labeled anomalies
+    
     model = IsolationForest(contamination='auto', random_state=42)
     model.fit(X_train)
+    
+    save_model_artifacts()
     print("Security model trained successfully.")
 
-    save_model_artifacts()
-
-def load_or_train_model(retry_count=0):
+def load_or_train_model():
+    """Loads existing model or triggers training if missing."""
     global model, scaler, label_encoders
-
-    MAX_RETRIES = 2
-
-    if retry_count >= MAX_RETRIES:
-        print(f"CRITICAL ERROR: Could not load the model after {retry_count} attempts.")
-        print("Verify write permissions or training errors.")
-        return
-    
     if os.path.exists(MODEL_FILE):
         try:
-            print("Loading existing model...")
             with open(MODEL_FILE, 'rb') as f:
                 artifacts = pickle.load(f)
-                
             model = artifacts['model']
             scaler = artifacts['scaler']
             label_encoders = artifacts['label_encoders']
-            print("Model loaded successfully from disk.")
-            return
+            return True
         except Exception as e:
-            print(f"Error loading the model (corrupt file?): {e}")
-            print("Proceeding to retrain...")
-    else:
-        print("No saved model was found.")
+            print(f"Error loading model: {e}")
+    return False
 
-    # Retrain if loading failed or no file
-    train_security_model()
-    load_or_train_model(retry_count + 1)  # Recursive call to load the newly trained model
+def get_user_history_features(user_id):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # Cast access_time to timestamp for correct ordering and comparison
+        cur.execute("SELECT access_time FROM logs WHERE user_id = %s ORDER BY access_time::timestamp DESC LIMIT 1", (user_id,))
+        last_row = cur.fetchone()
+        time_since = 3600 
+        if last_row:
+            # Ensure last_row[0] is a datetime object
+            db_time = pd.to_datetime(last_row[0])
+            diff = datetime.now() - db_time
+            time_since = diff.total_seconds()
+            
+        one_hour_ago = datetime.now() - timedelta(hours=1)
+        # Cast to timestamp to ensure correct comparison
+        cur.execute("SELECT COUNT(*) FROM logs WHERE user_id = %s AND access_time::timestamp > %s", (user_id, one_hour_ago))
+        count_1h = cur.fetchone()[0]
+        
+        return time_since, count_1h
+    finally:
+        cur.close()
+        conn.close()
 
-def predict_anomaly(log_entry):
-    """
-    Compute the anomaly score for a single log entry.
-    :param log_entry: Dictionary with log data.
-    :return: Anomaly score (lower is worse), and classification (True/False for anomaly)
-    """
+def predict_anomaly(log_entry, provided_features=None):
     global model
-    if model is None:
-        train_security_model() # Train if not already trained
+    if not model:
+        if not load_or_train_model():
+            return 0.0, False 
+
+    # Use CSV data features if provided (for testing), otherwise fetch from DB
+    if provided_features:
+        time_since = provided_features['time_since_last_access']
+        count_1h = provided_features['access_frequency_1h']
+    else:
+        time_since, count_1h = get_user_history_features(log_entry['user_id'])
     
-    # Convert the entry to dataframe (As in the training dataset)
     log_df = pd.DataFrame([log_entry])
-    log_df['access_time'] = pd.to_datetime(log_df['access_time'])
+    log_df['time_since_last_access'] = time_since
+    log_df['access_frequency_1h'] = count_1h
     
-    # Preprocessing
-    # Using existing transformers (scaler, encoders)
-    log_processed = preprocess_data(log_df)
-    
+    log_processed = preprocess_data(log_df, is_training=False)
     X_predict = log_processed[FEATURE_COLUMNS]
 
-    # Prediction: 
-    # - score_samples returns the anomaly index. 
-    #   The lower (more negative), the more anomalous.
-    # - predict returns 1 (normal) or -1 (anomaly)
-    anomaly_score = model.decision_function(X_predict)[0]
-    is_anomaly = anomaly_score < ANOMALY_THRESHOLD
+    score = model.decision_function(X_predict)[0]
+    is_anomaly = score < ANOMALY_THRESHOLD
     
-    return anomaly_score, is_anomaly
+    return score, is_anomaly
 
 def get_admin_emails():
     """Fetches a list of emails for all users with the 'Admin' role."""

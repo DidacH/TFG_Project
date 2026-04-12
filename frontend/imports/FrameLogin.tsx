@@ -188,11 +188,9 @@ export default function FrameLogin() {
         throw new Error(data.message || 'Login failed');
       }
       localStorage.setItem('token', data.token);
-      if (data.role === 'Admin') {
-        navigate('/admin'); //Navigate to admin panel if admin
-      } else {
-        navigate('/dashboard'); //Navigate to user dashboard if not admin
-      }
+      localStorage.setItem('role', data.role);
+
+      navigate('/dashboard');
     } catch (err: any) {
       setServerError(err.message);
     } finally {

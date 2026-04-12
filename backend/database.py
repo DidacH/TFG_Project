@@ -61,7 +61,7 @@ def init_logs_table():
             user_id TEXT,
             role TEXT,
             area TEXT NOT NULL,
-            access_time TEXT NOT NULL,
+            access_time TIMESTAMP NOT NULL,
             entry_allowed BOOLEAN DEFAULT TRUE,
             reason TEXT NOT NULL,
             error_code TEXT,
@@ -363,6 +363,5 @@ if __name__ == "__main__":
     # print(select_access_rules())
     # print(select_system_config())
     # make_last_log_anomaly()
-    
 
     get_all_table_names()

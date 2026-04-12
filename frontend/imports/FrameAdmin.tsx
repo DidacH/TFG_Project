@@ -214,10 +214,21 @@ export default function FrameAdmin() {
                         >
                             <UserCircle className="w-6 h-6 md:w-7 md:h-7 text-black" />
                         </button>
-                        {/*Header Title */}
-                        <h1 className="text-xl md:text-2xl font-semibold text-black text-center">
-                            Admin Panel
-                        </h1>
+                        
+                        {/* THE TOGGLE */}
+                        <div className="flex bg-[#eeeeee] rounded-lg p-1 mx-auto shadow-inner">
+                            <button 
+                                onClick={() => navigate('/dashboard')}
+                                className="px-4 py-1.5 rounded-md text-sm md:text-base font-medium text-gray-600 hover:text-black transition-all"
+                            >
+                                My QR
+                            </button>
+                            <button 
+                                className="px-4 py-1.5 rounded-md bg-white shadow text-sm md:text-base font-semibold text-[#c8102e] transition-all cursor-default"
+                            >
+                                Admin Panel
+                            </button>
+                        </div>
                     </div>
                      {/* Separator */}
                      <div className="border-b border-[#e6e6e6]"></div>
@@ -226,12 +237,12 @@ export default function FrameAdmin() {
 
             {/* Main Content Area */}
             <div className="flex-grow w-full flex flex-col gap-10 px-4 sm:px-6 lg:px-10 pb-12 pt-8 md:pt-12">
-                {/* When loading show text with 3 point animation, otherwise show content */}
+                {/* When loading show text with 3 point animation */}
                 {loading ? (
                     <div className="flex flex-col items-center justify-center h-[75vh] w-full">
                         <div className="relative">
                             <p className="text-gray-500 font-medium">
-                                Loading Dashboard
+                                Loading Panel
                             </p>
                             
                             <span className="absolute left-full top-0 text-gray-500 font-medium">
@@ -330,7 +341,6 @@ export default function FrameAdmin() {
                         </div>       
 
                         {/* Logout Button */}
-                        {/* Centered the logout button container */}
                         <div className="w-full max-w-xs md:max-w-sm mt-12 mx-auto">
                             <ActionButton 
                                 onClick={handleLogout} 
@@ -345,7 +355,7 @@ export default function FrameAdmin() {
 
                     </div>
                 )}
-            </div> {/* End Main Content Area */}
-        </div> //End Main container
+            </div>
+        </div> 
   );
 }
