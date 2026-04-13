@@ -178,7 +178,7 @@ export default function FrameDashboard() {
                         {/* Persistent toggle based on data or storedRole */}
                         {(data?.role === 'Admin' || storedRole === 'Admin') ? (
                             <div className="flex bg-[#eeeeee] rounded-lg p-1 mx-auto shadow-inner">
-                                <button className="px-4 py-1.5 rounded-md bg-white shadow text-sm md:text-base font-semibold text-[#c8102e]">My QR</button>
+                                <button className="px-4 py-1.5 rounded-md bg-white shadow text-sm md:text-base font-semibold text-[#c8102e]">Dashboard</button>
                                 <button onClick={() => navigate('/admin')} className="px-4 py-1.5 rounded-md text-sm md:text-base font-medium text-gray-600 hover:text-black">Admin Panel</button>
                             </div>
                         ) : (

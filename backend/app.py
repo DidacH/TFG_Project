@@ -25,6 +25,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from flask_socketio import SocketIO
 import pytz
+import json
 
 app = Flask(__name__)
 
@@ -100,8 +101,7 @@ def get_last_3_logs():
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
-        SELECT user_id, role, access_time, entry_allowed, area, 
-               CASE WHEN is_anomaly IS TRUE AND entry_allowed IS TRUE THEN 'AI Anomaly Detected' ELSE reason END as reason
+        SELECT user_id, role, access_time, entry_allowed, area, reason
         FROM logs
         ORDER BY access_time DESC
         LIMIT 3
@@ -115,8 +115,7 @@ def get_all_logs():
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
-        SELECT user_id, role, access_time, entry_allowed, area,
-                CASE WHEN is_anomaly IS TRUE AND entry_allowed IS TRUE THEN 'AI Anomaly Detected' ELSE reason END as reason
+        SELECT user_id, role, access_time, entry_allowed, area, reason
         FROM logs
         ORDER BY access_time DESC
     """)
@@ -690,18 +689,11 @@ def toggle_system_lockdown(user_id, role):
         return jsonify({'message': f'Error toggling lockdown: {str(e)}'}), 500
     
 
-SESSION_TIMEOUT_MINUTES = 10 
-RISK_SCORES = {
-    'FORGED_QR': 10,     
-    'MALFORMED_QR': 10,  
-    'SYSTEM_LOCKDOWN': 10, 
-    'UNKNOWN_USER': 5,   
-    'AREA_VIOLATION': 3, 
-    'TIME_VIOLATION': 1, 
-    'EXPIRED_QR': 1,     
-    'AI_ANOMALY': 8,     
-    'UNKNOWN': 1
-}
+try:
+    SESSION_TIMEOUT_MINUTES = int(os.getenv('SESSION_TIMEOUT_MINUTES', 10))
+except ValueError:
+    SESSION_TIMEOUT_MINUTES = 10
+RISK_SCORES = json.loads(os.getenv('RISK_SCORES_JSON', '{}'))
 
 @app.route('/api/admin/security-data', methods=['GET'])
 @token_required
@@ -729,7 +721,7 @@ def api_security_dashboard_data(user_id, role):
         blocked_24h = row['blocked'] if row else 0
         
         cur.execute("""
-            SELECT id, user_id, role, area, access_time, entry_allowed, reason, error_code, is_threat, is_reviewed, is_anomaly 
+            SELECT id, user_id, role, area, access_time, entry_allowed, reason, error_code, is_threat, is_reviewed, is_anomaly, risk_score 
             FROM logs 
             WHERE 
                 (entry_allowed IS FALSE OR is_threat IS TRUE OR is_anomaly IS TRUE)
@@ -748,7 +740,6 @@ def api_security_dashboard_data(user_id, role):
 
                 if d_log['is_anomaly'] and d_log['entry_allowed'] == 1:
                     d_log['error_code'] = 'AI_ANOMALY'
-                    d_log['reason'] = 'Behavioral Anomaly Detected'
                 
                 if not d_log.get('error_code'):
                      d_log['error_code'] = 'UNKNOWN'
@@ -803,19 +794,37 @@ def api_security_dashboard_data(user_id, role):
             u_id = representative_log['user_id']
             error_code = representative_log['error_code']
             reason = representative_log['reason']
+
+            if error_code == 'AI_ANOMALY':
+
+                ai_severity = evaluate_ai_severity(representative_log['risk_score'])
+                
+                if ai_severity == "CRITICAL":
+                    severity = "high"
+                    base_score = 10
+                elif ai_severity == "Medium":
+                    severity = "medium"
+                    base_score = 5
+                else:
+                    severity = "low"
+                    base_score = 2
+
+            else:
             
-            base_score = RISK_SCORES.get(error_code, 1)
+                base_score = RISK_SCORES.get(error_code, 1)
+                
+                severity = 'low'
+                if base_score >= 10: 
+                    severity = 'high'
+                elif base_score >= 3: 
+                    severity = 'medium'
+                
+                if count >= 3 and severity == 'low':
+                    severity = 'medium'
+                if count >= 5:
+                    severity = 'high'
+
             
-            severity = 'low'
-            if base_score >= 10: 
-                severity = 'high'
-            elif base_score >= 3: 
-                severity = 'medium'
-            
-            if count >= 3 and severity == 'low':
-                severity = 'medium'
-            if count >= 5:
-                severity = 'high'
 
             db_threat_flag = any(l.get('is_threat') for l in logs_in_group)
             db_anomaly_flag = any(l.get('is_anomaly') for l in logs_in_group)
@@ -909,6 +918,27 @@ def check_should_notify_hard_rule(qr_data, target_area):
 
     return should_notify
 
+def evaluate_ai_severity(risk_score):
+    """
+    Evaluates the severity of an AI-detected anomaly based on its risk score and a predefined threshold.
+    The function categorizes anomalies into "CRITICAL", "Medium", or "Low"
+    """
+    try:
+        threshold = float(os.getenv('ANOMALY_THRESHOLD', -0.025))
+    except ValueError:
+        threshold = -0.025
+        
+    distance = threshold - risk_score
+    
+    if distance >= 0.10:
+        severity = "CRITICAL"
+    elif distance >= 0.04:
+        severity = "Medium"
+    else:
+        severity = "Low"
+        
+    return severity
+
 def background_access_processing(qr_data, target_area):
     risk_score = 0.0
     is_anomaly = False
@@ -923,21 +953,29 @@ def background_access_processing(qr_data, target_area):
         'area': target_area,
         'access_time': qr_data['access_time'],
         'entry_allowed': qr_data['valid'],
-        'reason': qr_data['reason']
+        'reason': qr_data['reason'],
+        'error_code': qr_data.get('error_code', 'UNKNOWN')
     }
 
     if qr_data['valid']:
         try:
             risk_score, is_anomaly = predict_anomaly(log_entry)
             if is_anomaly:
+                severity = evaluate_ai_severity(risk_score)
                 is_threat = True
-                print(f"[AI] ANOMALY DETECTED. Score: {risk_score:.4f}")
-                should_send_anomaly_alert = True 
+                print(f"[AI] ANOMALY DETECTED. Score: {risk_score:.4f} | Severity: {severity}")
+                
+                # Action according to severity
+                if severity in ["Medium", "CRITICAL"]:
+                    should_send_anomaly_alert = True
+                    log_entry['reason'] = f"AI Anomaly ({severity})"
+                else:
+                    log_entry['reason'] = "AI Anomaly (Low)"
         except Exception as e:
             print(f"Error during AI analysis: {e}")
     else:
         if check_should_notify_hard_rule(qr_data, target_area):
-            log_entry['reason'] = f"HARD RULE: {qr_data['reason']}"
+            log_entry['reason'] = f"HARD RULE: {log_entry['reason']}"
             should_send_hard_rule_alert = True
 
     try:
@@ -947,9 +985,16 @@ def background_access_processing(qr_data, target_area):
             INSERT INTO logs (user_id, role, area, access_time, entry_allowed, reason, risk_score, error_code, is_anomaly, is_threat)
             VALUES (COALESCE(%s, 'unknown'), COALESCE(%s, 'unknown'), %s, %s, %s, %s, %s, %s, %s, %s)
         ''', (
-            qr_data['user_id'], qr_data['role'], target_area, qr_data['access_time'],
-            bool(qr_data['valid']), qr_data['reason'], float(risk_score),
-            qr_data['error_code'], bool(is_anomaly), bool(is_threat)
+            log_entry['user_id'], 
+            log_entry['role'], 
+            log_entry['area'], 
+            log_entry['access_time'],
+            log_entry['entry_allowed'], 
+            log_entry['reason'], 
+            float(risk_score),
+            log_entry['error_code'], 
+            bool(is_anomaly), 
+            bool(is_threat)
         ))
         conn.commit()
         cur.close()

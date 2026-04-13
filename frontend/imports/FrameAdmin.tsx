@@ -215,13 +215,13 @@ export default function FrameAdmin() {
                             <UserCircle className="w-6 h-6 md:w-7 md:h-7 text-black" />
                         </button>
                         
-                        {/* THE TOGGLE */}
+                        {/* TOGGLE */}
                         <div className="flex bg-[#eeeeee] rounded-lg p-1 mx-auto shadow-inner">
                             <button 
                                 onClick={() => navigate('/dashboard')}
                                 className="px-4 py-1.5 rounded-md text-sm md:text-base font-medium text-gray-600 hover:text-black transition-all"
                             >
-                                My QR
+                                Dashboard
                             </button>
                             <button 
                                 className="px-4 py-1.5 rounded-md bg-white shadow text-sm md:text-base font-semibold text-[#c8102e] transition-all cursor-default"
