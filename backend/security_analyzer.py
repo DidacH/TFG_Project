@@ -119,18 +119,15 @@ def get_user_history_features(user_id):
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        # Cast access_time to timestamp for correct ordering and comparison
         cur.execute("SELECT access_time FROM logs WHERE user_id = %s ORDER BY access_time::timestamp DESC LIMIT 1", (user_id,))
         last_row = cur.fetchone()
         time_since = 3600 
         if last_row:
-            # Ensure last_row[0] is a datetime object
             db_time = pd.to_datetime(last_row[0])
             diff = datetime.now() - db_time
             time_since = diff.total_seconds()
             
         one_hour_ago = datetime.now() - timedelta(hours=1)
-        # Cast to timestamp to ensure correct comparison
         cur.execute("SELECT COUNT(*) FROM logs WHERE user_id = %s AND access_time::timestamp > %s", (user_id, one_hour_ago))
         count_1h = cur.fetchone()[0]
         

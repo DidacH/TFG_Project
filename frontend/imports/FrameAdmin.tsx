@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Loader2, UserCircle, Users, FileText, LogOut, AlertTriangle, CheckCircle2, LockKeyholeIcon } from "lucide-react";
 import { cn } from "../components/ui/utils";
@@ -80,6 +80,8 @@ export default function FrameAdmin() {
     document.title = "AIloQR - Admin Panel";
   }, []);
 
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   //Get token from localStorage
   const getToken = () => localStorage.getItem('token');
 
@@ -105,6 +107,15 @@ export default function FrameAdmin() {
         handleLogout();
         return;
     }
+
+    // If there's an ongoing fetch, abort it before starting a new one
+    if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+    }
+    // Create a new AbortController for the current fetch
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     // Only show loading screen if it's not a background update
     if (!isBackgroundUpdate) {
         setLoading(true);
@@ -112,6 +123,7 @@ export default function FrameAdmin() {
     try {
         const response = await fetch(`${API_URL}/api/admin/dashboard-data`, {
             headers: { 'Authorization': `Bearer ${token}` },
+            signal: controller.signal
         });
 
         if (!response.ok) {
@@ -124,11 +136,26 @@ export default function FrameAdmin() {
         const json: AdminData = await response.json();
         setData(json);
     } catch (err: any) {
+        if (err.name === 'AbortError') {
+            console.log('Admin fetch aborted due to fast navigation');
+            return;
+        }
         setError(err.message);
     } finally {
-        setLoading(false);
+        if (abortControllerRef.current === controller) {
+            setLoading(false);
+        }
     }
   }, [handleLogout]);
+
+  // Cleanup on unmount to prevent memory leaks
+  useEffect(() => {
+      return () => {
+          if (abortControllerRef.current) {
+              abortControllerRef.current.abort();
+          }
+      };
+  }, []);
 
   //Hook to fetch data on mount
   useEffect(() => {
@@ -140,7 +167,7 @@ export default function FrameAdmin() {
 
         let isFetching = false;
 
-        const handleUpdate = async (data: any) => {
+        const handleUpdate = async () => {
             
             if (isFetching) {
                 return; 
@@ -155,16 +182,11 @@ export default function FrameAdmin() {
         };
 
         socket.on("dashboard_update", handleUpdate);
-        
-        const handleReconnect = () => {
-            handleUpdate({ type: 'reconnect' });
-        };
-        
-        socket.on("connect", handleReconnect);
+        socket.on("connect", handleUpdate);
 
         return () => {
             socket.off("dashboard_update", handleUpdate);
-            socket.off("connect", handleReconnect);
+            socket.off("connect", handleUpdate);
 
         };
     }, [socket, fetchAdminData]);
@@ -205,12 +227,12 @@ export default function FrameAdmin() {
                 <div className="w-full mx-auto px-4 sm:px-6 lg:px-10">
                     {/* Inner container for Title and Button alignment */}
                     <div className="relative flex justify-center items-center h-12 md:h-14 mb-3">
-                        {/*Profile button positioned left within the padded container */}
+                        {/*Profile button */}
                         <button
-                            onClick={() => navigate('/profile')}
-                            disabled={!!actionLoading}
+                            onClick={() => !loading && navigate('/profile')}
+                            disabled={loading || !!actionLoading}
                             aria-label="User Profile"
-                            className="absolute left-0 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 md:w-12 md:h-12 bg-[#eeeeee] hover:bg-[#e0e0e0] active:bg-[#d5d5d5] rounded-full transition-colors"
+                            className={`absolute left-0 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-full transition-all ${loading || !!actionLoading ? 'bg-gray-200 opacity-50 cursor-not-allowed' : 'bg-[#eeeeee] hover:bg-[#e0e0e0] active:bg-[#d5d5d5]'}`}
                         >
                             <UserCircle className="w-6 h-6 md:w-7 md:h-7 text-black" />
                         </button>
@@ -218,8 +240,9 @@ export default function FrameAdmin() {
                         {/* TOGGLE */}
                         <div className="flex bg-[#eeeeee] rounded-lg p-1 mx-auto shadow-inner">
                             <button 
-                                onClick={() => navigate('/dashboard')}
-                                className="px-4 py-1.5 rounded-md text-sm md:text-base font-medium text-gray-600 hover:text-black transition-all"
+                                onClick={() => !loading && navigate('/dashboard')}
+                                disabled={loading}
+                                className={`px-4 py-1.5 rounded-md text-sm md:text-base font-medium transition-all ${loading ? 'opacity-50 cursor-not-allowed text-gray-400' : 'text-gray-600 hover:text-black'}`}
                             >
                                 Dashboard
                             </button>

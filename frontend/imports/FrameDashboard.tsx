@@ -57,7 +57,6 @@ export default function FrameDashboard() {
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false); 
   const isRefreshingRef = useRef(false); 
-  const isInitialLoadDone = useRef(false); 
   const expirationTimeRef = useRef<number | null>(null); 
   const { socket } = useWebSocket();
   const userIdRef = useRef<string | undefined>(data?.id);
@@ -68,6 +67,8 @@ export default function FrameDashboard() {
   useEffect(() => {
     document.title = "AIloQR - Dashboard";
   }, []);
+
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!loading) return;
@@ -89,6 +90,12 @@ export default function FrameDashboard() {
     if (!getToken()) { handleLogout(); return; }
     if (isRefreshingRef.current && !isInitialLoad && !fetchOnly) return; 
 
+    if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     isRefreshingRef.current = true;
     if (!fetchOnly) setIsRefreshing(true);
 
@@ -97,6 +104,7 @@ export default function FrameDashboard() {
         const response = await fetch(`${API_URL}${endpoint}`, {
             method: 'GET',
             headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+            signal: controller.signal
         });
         const json = await response.json();
 
@@ -117,13 +125,27 @@ export default function FrameDashboard() {
             expirationTimeRef.current = Date.now() + (QR_REFRESH_INTERVAL * 1000);
         }
     } catch (err: any) {
+        if (err.name === 'AbortError') {
+            console.log('Dashboard fetch aborted due to fast navigation');
+            return;
+        }
         setError(err.message);
     } finally {
-        isRefreshingRef.current = false;
-        if (!fetchOnly) setIsRefreshing(false);
-        if (isInitialLoad) setLoading(false);
+        if (abortControllerRef.current === controller) {
+            isRefreshingRef.current = false;
+            if (!fetchOnly) setIsRefreshing(false);
+            if (isInitialLoad) setLoading(false);
+        }
     }
   }, [handleLogout]);
+
+  useEffect(() => {
+      return () => {
+          if (abortControllerRef.current) {
+              abortControllerRef.current.abort();
+          }
+      };
+  }, []);
 
   useEffect(() => { userIdRef.current = data?.id; }, [data?.id]);
 
@@ -171,15 +193,27 @@ export default function FrameDashboard() {
             <div className="fixed top-0 left-0 right-0 z-40 bg-background pt-6 md:pt-8">
                 <div className="w-full mx-auto px-4 sm:px-6 lg:px-10">
                     <div className="relative flex justify-center items-center h-12 md:h-14 mb-3">
-                        <button onClick={() => navigate('/profile')} className="absolute left-0 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 md:w-12 md:h-12 bg-[#eeeeee] hover:bg-[#e0e0e0] rounded-full transition-colors">
+                        <button 
+                            onClick={() => !loading && navigate('/profile')} 
+                            disabled={loading}
+                            className={`absolute left-0 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-full transition-all ${loading ? 'bg-gray-200 opacity-50 cursor-not-allowed' : 'bg-[#eeeeee] hover:bg-[#e0e0e0]'}`}
+                        >
                             <UserCircle className="w-6 h-6 md:w-7 md:h-7 text-black" />
                         </button>
                         
                         {/* Persistent toggle based on data or storedRole */}
                         {(data?.role === 'Admin' || storedRole === 'Admin') ? (
                             <div className="flex bg-[#eeeeee] rounded-lg p-1 mx-auto shadow-inner">
-                                <button className="px-4 py-1.5 rounded-md bg-white shadow text-sm md:text-base font-semibold text-[#c8102e]">Dashboard</button>
-                                <button onClick={() => navigate('/admin')} className="px-4 py-1.5 rounded-md text-sm md:text-base font-medium text-gray-600 hover:text-black">Admin Panel</button>
+                                <button className="px-4 py-1.5 rounded-md bg-white shadow text-sm md:text-base font-semibold text-[#c8102e] cursor-default">
+                                    Dashboard
+                                </button>
+                                <button 
+                                    onClick={() => !loading && navigate('/admin')} 
+                                    disabled={loading}
+                                    className={`px-4 py-1.5 rounded-md text-sm md:text-base font-medium transition-all ${loading ? 'opacity-50 cursor-not-allowed text-gray-400' : 'text-gray-600 hover:text-black'}`}
+                                >
+                                    Admin Panel
+                                </button>
                             </div>
                         ) : (
                             <h1 className="text-xl md:text-2xl font-semibold text-black text-center">Your Dashboard</h1>
