@@ -5,6 +5,10 @@ import os
 import psycopg2
 from psycopg2 import extras
 
+import random
+import uuid
+from datetime import datetime, timedelta
+
 load_dotenv()  #Load environment variables from .env file
 
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -340,7 +344,6 @@ def make_last_log_anomaly():
     conn.close()
 
 
-
 if __name__ == "__main__":
 
 
@@ -363,5 +366,5 @@ if __name__ == "__main__":
     # print(select_access_rules())
     # print(select_system_config())
     # make_last_log_anomaly()
-
+  
     get_all_table_names()

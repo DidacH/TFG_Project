@@ -9,7 +9,7 @@ from flask import Flask, render_template, request, jsonify, send_file
 from flask_cors import CORS
 import jwt
 from QR_generation_validation import generate_qr, verify_qr
-from security_analyzer import predict_anomaly, send_anomaly_alert, load_or_train_model, send_access_denied_alert, get_admin_emails
+from security_analyzer import predict_anomaly, send_anomaly_alert, load_or_train_model, send_access_denied_alert, get_admin_emails, start_retraining_scheduler
 import uuid
 from database import save_user, check_password, get_db_connection, get_user_by_email, get_all_roles
 import base64
@@ -468,7 +468,7 @@ def api_download_users(user_id, role):
 # --- SECURITY ENDPOINTS ---
 @app.route('/api/admin/logs/suspicious')
 def get_suspicious_logs():
-    threshold = float(os.getenv('ANOMALY_THRESHOLD', -0.15))
+    threshold = float(os.getenv('ANOMALY_THRESHOLD', -0.025))
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
@@ -974,6 +974,7 @@ def background_access_processing(qr_data, target_area):
         except Exception as e:
             print(f"Error during AI analysis: {e}")
     else:
+        is_threat = True
         if check_should_notify_hard_rule(qr_data, target_area):
             log_entry['reason'] = f"HARD RULE: {log_entry['reason']}"
             should_send_hard_rule_alert = True
@@ -1106,16 +1107,29 @@ def find_cluster_ids_for_log(conn, target_log_id):
 def auto_review_old_logs(conn):
     try:
         cur = conn.cursor()
+        
+        # Logs older than 24h
         yesterday_obj = datetime.now() - timedelta(days=1)
         yesterday_str = yesterday_obj.strftime("%Y-%m-%d %H:%M:%S")
         
+        try:
+            threshold = float(os.getenv('ANOMALY_THRESHOLD', -0.025))
+        except ValueError:
+            threshold = -0.025
+            
+        # Scores classified as "Low" severity anomalies
+        low_severity_bound = threshold - 0.04 
+        
+        # Update logs flagged by AI as low-severity anomalies that are older than 24h to reviewed
         cur.execute("""
             UPDATE logs 
             SET is_reviewed = TRUE 
             WHERE access_time < %s 
-            AND is_threat = FALSE 
+            AND is_threat = TRUE 
             AND is_reviewed = FALSE
-        """, (yesterday_str,))
+            AND is_anomaly = TRUE
+            AND risk_score >= %s
+        """, (yesterday_str, low_severity_bound))
         
         conn.commit()
         cur.close()
@@ -1167,6 +1181,7 @@ def send_lockdown_email(active):
     except Exception as e:
         print(f"Failed to send email: {e}")
 
+
 #=================================================
 # === APPLICATION START ===
 #=================================================
@@ -1184,6 +1199,9 @@ if __name__ == "__main__":
         print("✅ AI model prepared and loaded into memory.")
     except Exception as e:
         print(f"⚠️ Warning: Failed to load AI model: {e}")
+
+    print("🕒 Initializing retraining scheduler in the background...")
+    start_retraining_scheduler()
 
     print(f"🚀 Initializing Flask server in mode: {env.upper()}")
     print(f"🔌 WebSocket activated on port {port}...")

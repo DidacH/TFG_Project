@@ -11,6 +11,7 @@ from psycopg2 import extras
 import pickle
 from datetime import datetime, timedelta
 import random
+from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
 load_dotenv()  # Load environment variables from .env file
 
@@ -305,3 +306,99 @@ def fetch_all_logs():
     
     # Convert results to DataFrame
     return pd.DataFrame(logs)
+
+
+# --- AUTOMATED RETRAINING PIPELINE ---
+
+def fetch_recent_normative_logs(limit=10000):
+    """
+    Fetches the most recent standard access logs from the database.
+    Strictly excludes logs flagged as threats (is_threat = TRUE).
+    Calculates the dynamic temporal features before returning the DataFrame.
+    """
+    conn = get_db_connection()
+    df = pd.DataFrame()
+    
+    try:
+        cur = conn.cursor()
+        
+        query = """
+            SELECT user_id, role, area, access_time
+            FROM logs
+            WHERE entry_allowed = TRUE AND is_threat = FALSE
+            ORDER BY access_time DESC
+            LIMIT %s
+        """
+        cur.execute(query, (limit,))
+        rows = cur.fetchall()
+        
+        if rows:
+            columns = [desc[0] for desc in cur.description]
+            df = pd.DataFrame(rows, columns=columns)
+            
+            print("⏳ Calculating dynamic temporal features for retraining...")
+            
+            # Ensure access_time is a datetime object
+            df['access_time'] = pd.to_datetime(df['access_time'])
+            
+            # Sort chronologically for accurate calculations
+            df = df.sort_values('access_time')
+            
+            # Calculate 'time_since_last_access'
+            df['time_since_last_access'] = df.groupby('user_id')['access_time'].diff().dt.total_seconds()
+            
+            # For the first access of each user, set a default large value (e.g., 86400 seconds = 1 day)
+            df['time_since_last_access'] = df['time_since_last_access'].fillna(86400)
+            
+            # Calculate 'access_frequency_1h'
+            def count_last_hour(series):
+                return series.rolling('1h', closed='left').count().fillna(0)
+                
+            df = df.set_index('access_time')
+            df['access_frequency_1h'] = df.groupby('user_id')['user_id'].transform(count_last_hour)
+            df = df.reset_index()
+            
+            # Restore original descending order (newest first)
+            df = df.sort_values('access_time', ascending=False)
+            
+    except Exception as e:
+        print(f"Error fetching normative logs for retraining: {e}")
+    finally:
+        cur.close()
+        conn.close()
+        
+    return df
+
+def execute_auto_retraining():
+    """
+    Executes the automated retraining pipeline to adapt to concept drift.
+    Retrieves fresh data and updates the Isolation Forest model artifacts.
+    """
+    print(f"[{datetime.now()}] Initiating scheduled AI auto-retraining...")
+    
+    df_recent = fetch_recent_normative_logs(limit=10000)
+    
+    # Ensure there is enough data to build a meaningful Isolation Forest
+    if df_recent.empty or len(df_recent) < 1000:
+        print("Insufficient new normative data for retraining. Aborting process.")
+        return
+
+    try:
+        # Call the existing training function with the fresh DataFrame
+        train_security_model(df_recent)
+        print("✅ AI Auto-retraining completed successfully. Model artifacts updated.")
+    except Exception as e:
+        print(f"❌ Error during model retraining: {e}")
+
+def start_retraining_scheduler():
+    """
+    Initializes a background scheduler to retrain the model periodically.
+    Configured to run during low-traffic periods to avoid server load.
+    """
+    scheduler = BackgroundScheduler()
+    
+    # Schedule the retraining job to run every Sunday at 03:00 AM
+    scheduler.add_job(execute_auto_retraining, 'cron', day_of_week='sun', hour=3, minute=0)
+    
+    scheduler.start()
+    print("🕒 Model auto-retraining scheduler started. Next run scheduled.")
