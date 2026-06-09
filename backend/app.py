@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 import os
 load_dotenv() 
 
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, Response
 from flask_cors import CORS
 import jwt
 from QR_generation_validation import generate_qr, verify_qr
@@ -13,7 +13,7 @@ from security_analyzer import predict_anomaly, send_anomaly_alert, load_or_train
 import uuid
 from database import save_user, check_password, get_db_connection, get_user_by_email, get_all_roles
 import base64
-from io import BytesIO, StringIO
+from io import StringIO, BytesIO
 from PIL import Image
 import csv
 from datetime import datetime, timedelta, timezone
@@ -394,76 +394,91 @@ def api_admin_dashboard(user_id, role):
     except Exception as e:
         return jsonify({'message': f'Internal server error: {str(e)}'}), 500
 
-@app.route('/api/admin/logs/download', methods=['GET'])
+
+@app.route('/api/admin/users', methods=['GET'])
 @token_required
 @admin_required
-def api_download_logs(user_id, role):
+def api_get_users_list(user_id, role):
     try:
-        logs = get_all_logs()
-        output = StringIO()
-        writer = csv.writer(output, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-        writer.writerow(['User ID', 'Role', 'Area', 'Access Time', 'Entry Allowed?', 'Reason'])
-        output.write('\ufeff')
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('''
+            SELECT id, name, email, role, registered_at, is_blocked 
+            FROM users 
+            ORDER BY registered_at DESC
+        ''')
+        users = cur.fetchall()
+        cur.close()
+        conn.close()
 
-        for log in logs:
-            writer.writerow([
-                log['user_id'] if log['user_id'] else 'N/A',
-                log['role'] if log['role'] else 'N/A',
-                log['area'] if log['area'] else 'N/A',
-                log['access_time'] if log['access_time'] else 'N/A',
-                log['entry_allowed'] if log['entry_allowed'] is not None else 'N/A',
-                log['reason'] if log['reason'] else 'N/A',
-            ])
+        users_list = []
+        for u in users:
+            users_list.append({
+                'id': u['id'] if isinstance(u, dict) else u[0],
+                'name': u['name'] if isinstance(u, dict) else u[1],
+                'email': u['email'] if isinstance(u, dict) else u[2],
+                'role': u['role'] if isinstance(u, dict) else u[3],
+                'registered_at': u['registered_at'] if isinstance(u, dict) else u[4],
+                'is_blocked': u['is_blocked'] if isinstance(u, dict) else u[5]
+            })
 
-        output.seek(0)
-        mem = BytesIO()
-        mem.write(output.getvalue().encode('utf-8'))
-        mem.seek(0)
-        output.close()
-
-        return send_file(
-            mem,
-            mimetype='text/csv; charset=utf-8',
-            as_attachment=True,
-            download_name='logs.csv'
-        )
+        return jsonify(users_list), 200
     except Exception as e:
-        return jsonify({'message': f'Internal server error: {str(e)}'}), 500
+        return jsonify({'message': f'Error fetching users: {str(e)}'}), 500
 
-@app.route('/api/admin/users/download', methods=['GET'])
+
+@app.route('/api/admin/<export_type>/download', methods=['GET'])
 @token_required
 @admin_required
-def api_download_users(user_id, role):
+def download_csv(user_id, role, export_type):
     try:
-        users = get_all_users()
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
         output = StringIO()
-        writer = csv.writer(output, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-        writer.writerow(['ID', 'Name', 'Email', 'Role', 'Registered At'])
+        # BOM for UTF-8 to ensure Excel compatibility and ; as delimiter for better compatibility with European versions
         output.write('\ufeff')
-
-        for user in users:
-            writer.writerow([
-                user['id'],
-                user['name'],
-                user['email'],
-                user['role'],
-                user['registered_at']
-            ])
-
-        output.seek(0)
-        mem = BytesIO()
-        mem.write(output.getvalue().encode('utf-8'))
-        mem.seek(0)
-        output.close()
-
-        return send_file(
-            mem,
-            mimetype='text/csv; charset=utf-8',
-            as_attachment=True,
-            download_name='users.csv'
-        )
+        writer = csv.writer(output, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+        
+        if export_type == 'users':
+            cur.execute("SELECT id, name, email, role, registered_at, is_blocked FROM users ORDER BY registered_at DESC")
+            users = cur.fetchall()
+            
+            writer.writerow(['ID', 'Name', 'Email', 'Role', 'Registered At', 'Is Blocked'])
+            
+            for u in users:
+                row = list(u.values()) if hasattr(u, 'values') else list(u)
+                writer.writerow(row)
+                
+            filename = "users.csv"
+            
+        elif export_type == 'logs':
+            cur.execute("SELECT user_id, role, area, access_time, entry_allowed, reason, risk_score, is_anomaly, is_threat FROM logs ORDER BY access_time DESC")
+            logs = cur.fetchall()
+            
+            writer.writerow(['User ID', 'Role', 'Area', 'Time', 'Allowed', 'Reason', 'Risk Score', 'Is Anomaly', 'Is Threat'])
+            
+            for l in logs:
+                row = list(l.values()) if hasattr(l, 'values') else list(l)
+                writer.writerow(row)
+                
+            filename = "logs.csv"
+            
+        else:
+            cur.close()
+            conn.close()
+            return jsonify({"message": "Invalid export type"}), 400
+            
+        cur.close()
+        conn.close()
+        
+        response = Response(output.getvalue(), mimetype='text/csv; charset=utf-8')
+        response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+        return response
+        
     except Exception as e:
-        return jsonify({'message': f'Internal server error: {str(e)}'}), 500
+        return jsonify({'message': f"Internal server error: {str(e)}"}), 500
+
 
 # --- SECURITY ENDPOINTS ---
 @app.route('/api/admin/logs/suspicious')
@@ -645,6 +660,52 @@ def toggle_review_status(user_id, role, log_id):
         
     except Exception as e:
         return jsonify({'message': f'Error updating review status: {str(e)}'}), 500
+
+
+@app.route('/api/admin/user/<target_user_id>/toggle-block', methods=['POST'])
+@token_required
+@admin_required
+def api_toggle_user_block(user_id, role, target_user_id):
+    """
+    Inverts the block status of a user.
+    Only accessible by admins.
+    """
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Check that the user exists and get current block status
+        cur.execute("SELECT is_blocked, name FROM users WHERE id = %s", (target_user_id,))
+        target_user = cur.fetchone()
+        
+        if not target_user:
+            cur.close()
+            conn.close()
+            return jsonify({'message': 'User not found'}), 404
+            
+        current_status = target_user['is_blocked'] if isinstance(target_user, dict) or hasattr(target_user, 'keys') else target_user[0]
+        user_name = target_user['name'] if isinstance(target_user, dict) or hasattr(target_user, 'keys') else target_user[1]
+        
+        # Invert the block status
+        new_status = not current_status
+        
+        # Update the database
+        cur.execute("UPDATE users SET is_blocked = %s WHERE id = %s", (new_status, target_user_id))
+        conn.commit()
+        
+        cur.close()
+        conn.close()
+        
+        action_str = "blocked" if new_status else "unblocked"
+        
+        return jsonify({
+            'status': 'success', 
+            'message': f'User {user_name} has been {action_str}.',
+            'new_is_blocked': new_status
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'message': f'Error toggling user block status: {str(e)}'}), 500
 
 
 @app.route('/api/admin/system-lockdown', methods=['POST'])
@@ -1143,49 +1204,89 @@ def auto_review_old_logs(conn):
         pass # Silently pass automated housekeeping
 
 def send_lockdown_email(active):
+    """
+    Sends a formatted HTML email to ALL administrators when the system 
+    lockdown status changes (Activated or Lifted).
+    """
     if not SMTP_EMAIL or not SMTP_PASSWORD:
+        print("⚠️ SMTP credentials not set. Cannot send lockdown email.")
         return
 
     admins = get_admin_emails()
     if not admins:
+        print("ALERT: Lockdown triggered but NO ADMINS found in database.")
         return
 
-    subject = "⚠️🔒 AILOQR SYSTEM LOCKDOWN ALERT 🔒⚠️" if active else "✅ AILOQR System Lockdown Lifted"
-    
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # HTML Template for Lockdown ACTIVATED
     if active:
-        body = f"""
-        WARNING: SYSTEM LOCKDOWN INITIATED.
-        
-        This is an automated alert. The system has been placed in LOCKDOWN mode by an administrator.
-        
-        - All non-admin access is currently BLOCKED.
-        - Physical access control points will deny entry.
-        
-        Time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+        subject = "⚠️🔒 AILOQR SYSTEM LOCKDOWN INITIATED 🔒⚠️"
+        body_html = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+            <div style="background-color: #8b0000; color: white; padding: 15px 20px; text-align: center;">
+                <h2 style="margin: 0; font-size: 22px;">SYSTEM LOCKDOWN INITIATED</h2>
+            </div>
+            <div style="padding: 20px; color: #333;">
+                <p style="font-size: 16px; margin-top: 0; font-weight: bold; color: #8b0000;">CRITICAL ALERT:</p>
+                <p style="font-size: 16px;">This is an automated alert. The system has been placed in <strong>LOCKDOWN</strong> mode by an administrator.</p>
+                
+                <div style="background-color: #fdf2f2; padding: 15px; border-left: 4px solid #8b0000; margin-bottom: 20px;">
+                    <ul style="list-style-type: none; padding: 0; margin: 0; line-height: 1.8; color: #c0392b; font-weight: bold;">
+                        <li>🚫 All non-admin access is currently BLOCKED.</li>
+                        <li>🚫 Physical access control points will deny entry.</li>
+                    </ul>
+                </div>
+                
+                <p style="color: #7f8c8d; font-size: 14px; margin-bottom: 0;"><strong>Timestamp:</strong> {current_time}</p>
+            </div>
+        </div>
         """
+        
+    # HTML Template for Lockdown LIFTED
     else:
-        body = f"""
-        System Lockdown has been LIFTED.
-        
-        Normal access control rules are now back in effect.
-        
-        Time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+        subject = "✅ AILOQR System Lockdown Lifted"
+        body_html = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+            <div style="background-color: #27ae60; color: white; padding: 15px 20px; text-align: center;">
+                <h2 style="margin: 0; font-size: 22px;">System Lockdown Lifted</h2>
+            </div>
+            <div style="padding: 20px; color: #333;">
+                <p style="font-size: 16px; margin-top: 0;">The system lockdown has been successfully lifted.</p>
+                
+                <div style="background-color: #eafaf1; padding: 15px; border-left: 4px solid #27ae60; margin-bottom: 20px;">
+                    <ul style="list-style-type: none; padding: 0; margin: 0; line-height: 1.8; color: #2c3e50;">
+                        <li>🔓 Normal access control rules are now back in effect.</li>
+                        <li>🔓 Physical access control points are operating normally.</li>
+                    </ul>
+                </div>
+                
+                <p style="color: #7f8c8d; font-size: 14px; margin-bottom: 0;"><strong>Timestamp:</strong> {current_time}</p>
+            </div>
+        </div>
         """
 
+    # --- EMAIL SENDING ---
     try:
         msg = MIMEMultipart()
         msg['From'] = SMTP_EMAIL
         msg['To'] = ", ".join(admins)
         msg['Subject'] = subject
-        msg.attach(MIMEText(body, 'plain'))
+        
+        # Attach the HTML body
+        msg.attach(MIMEText(body_html, 'html'))
 
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
+        # Connect to Gmail SMTP server
+        server = smtplib.SMTP('smtp.gmail.com', 587, timeout=5)
+        server.starttls() # Secure encryption
         server.login(SMTP_EMAIL, SMTP_PASSWORD)
+        
         server.sendmail(SMTP_EMAIL, admins, msg.as_string())
         server.quit()
+        
+        print(f"[EMAIL] Lockdown status ({'Active' if active else 'Lifted'}) sent successfully to admins.")
     except Exception as e:
-        print(f"Failed to send email: {e}")
+        print(f"[EMAIL ERROR] Failed to send lockdown email: {e}")
 
 
 #=================================================

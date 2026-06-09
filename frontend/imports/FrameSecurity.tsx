@@ -298,6 +298,7 @@ export default function FrameSecurity() {
 
   const handleLogout = useCallback(() => {
     localStorage.removeItem("token");
+    localStorage.removeItem("role");
     navigate("/login");
   }, [navigate]);
 

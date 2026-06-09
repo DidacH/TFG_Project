@@ -4,6 +4,7 @@ import RegisterPage from "./pages/RegisterPage";
 import DashboardPage from "./pages/DashboardPage";
 import AdminPage from "./pages/AdminPage";
 import SecurityPage from "./pages/SecurityPage";
+import UsersPage from './pages/UsersPage';
 import { WebSocketProvider } from './context/WebSocketContext';
 
 const PrivateRoutes = () => {
@@ -28,6 +29,7 @@ export default function App() {
                 <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/admin" element={<AdminPage />} />
                 <Route path="/security" element={<SecurityPage />} />
+                <Route path="/users" element={<UsersPage />} />
             </Route>
 
             {/* Catch-all route for unmatched paths */}

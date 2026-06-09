@@ -119,10 +119,10 @@ def verify_qr(content, secret_key, target_area):
             'access_time': time_str
         }
 
-    # Check user role
+    # Fetch user role and block status from DB
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT role FROM users WHERE id = %s", (user_id,))
+    cur.execute("SELECT role, is_blocked FROM users WHERE id = %s", (user_id,))
     user = cur.fetchone()
     cur.close()
     conn.close()
@@ -137,7 +137,20 @@ def verify_qr(content, secret_key, target_area):
             'access_time': time_str
         }
 
-    role = user[0]
+    # Extract role and block status, handling both dict and tuple cases
+    role = user['role'] if isinstance(user, dict) or hasattr(user, 'keys') else user[0]
+    is_blocked = user['is_blocked'] if isinstance(user, dict) or hasattr(user, 'keys') else user[1]
+
+    # INDIVIDUAL USER BLOCK CHECK
+    if is_blocked:
+        return {
+            'valid': False,
+            'error_code': 'USER_BLOCKED',
+            'reason': 'User account is blocked',
+            'user_id': user_id,
+            'role': role,
+            'access_time': time_str
+        }
 
     # GLOBAL LOCKDOWN CHECK
     load_rules_from_db()
@@ -154,6 +167,8 @@ def verify_qr(content, secret_key, target_area):
                 'role': role, 
                 'access_time': time_str
             }
+
+    
 
     # Check expiration
     expiration_seconds = 30  #seconds

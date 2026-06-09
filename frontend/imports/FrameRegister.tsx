@@ -284,8 +284,9 @@ export default function FrameRegister() {
             });
             const data = await response.json();
             if (!response.ok) throw new Error(data.message || 'Error during registration');
-            //On successful registration, store token and log in
+            //On successful registration, store token and role and log in
             localStorage.setItem('token', data.token);
+            localStorage.setItem('role', data.role);
             if (data.role === 'Admin') {
                 navigate('/admin'); //Navigate to admin panel if admin
             } else {

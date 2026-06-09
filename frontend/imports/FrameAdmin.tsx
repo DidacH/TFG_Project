@@ -97,6 +97,7 @@ export default function FrameAdmin() {
   //Logout handler
   const handleLogout = useCallback(() => {
     localStorage.removeItem("token");
+    localStorage.removeItem("role");
     navigate("/login");
   }, [navigate]);
 
@@ -316,7 +317,7 @@ export default function FrameAdmin() {
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                         {data?.last_3_users.map((user, index) => (
                                             <div key={`user-${index}`} className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm">
-                                                <p className="font-medium text-gray-800">{user.name} ({user.role})</p>
+                                                <p className="font-medium text-gray-800 truncate">{user.name} ({user.role})</p>
                                                 <p className="text-gray-600 truncate">{user.email}</p>
                                                 <p className="text-gray-500 text-xs">Registered: {user.registered_at}</p>
                                             </div>
