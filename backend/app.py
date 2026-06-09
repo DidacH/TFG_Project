@@ -954,12 +954,17 @@ def background_access_processing(qr_data, target_area):
         'access_time': qr_data['access_time'],
         'entry_allowed': qr_data['valid'],
         'reason': qr_data['reason'],
-        'error_code': qr_data.get('error_code', 'UNKNOWN')
+        'error_code': qr_data.get('error_code', 'UNKNOWN'),
+        'ai_explanation': None
     }
 
     if qr_data['valid']:
         try:
-            risk_score, is_anomaly = predict_anomaly(log_entry)
+            # Unpack the 3 variables returned by predict_anomaly
+            risk_score, is_anomaly, ai_explanation = predict_anomaly(log_entry)
+
+            log_entry['ai_explanation'] = explanation if is_anomaly else None
+
             if is_anomaly:
                 severity = evaluate_ai_severity(risk_score)
                 is_threat = True
@@ -983,8 +988,8 @@ def background_access_processing(qr_data, target_area):
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute('''
-            INSERT INTO logs (user_id, role, area, access_time, entry_allowed, reason, risk_score, error_code, is_anomaly, is_threat)
-            VALUES (COALESCE(%s, 'unknown'), COALESCE(%s, 'unknown'), %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO logs (user_id, role, area, access_time, entry_allowed, reason, risk_score, error_code, is_anomaly, is_threat, ai_explanation)
+            VALUES (COALESCE(%s, 'unknown'), COALESCE(%s, 'unknown'), %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ''', (
             log_entry['user_id'], 
             log_entry['role'], 
@@ -995,7 +1000,8 @@ def background_access_processing(qr_data, target_area):
             float(risk_score),
             log_entry['error_code'], 
             bool(is_anomaly), 
-            bool(is_threat)
+            bool(is_threat),
+            log_entry.get('ai_explanation')
         ))
         conn.commit()
         cur.close()
@@ -1144,7 +1150,7 @@ def send_lockdown_email(active):
     if not admins:
         return
 
-    subject = "⚠️🔒 SYSTEM LOCKDOWN ALERT 🔒⚠️" if active else "✅ System Lockdown Lifted"
+    subject = "⚠️🔒 AILOQR SYSTEM LOCKDOWN ALERT 🔒⚠️" if active else "✅ AILOQR System Lockdown Lifted"
     
     if active:
         body = f"""

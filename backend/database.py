@@ -72,7 +72,8 @@ def init_logs_table():
             risk_score FLOAT DEFAULT 0.0,
             is_reviewed BOOLEAN DEFAULT FALSE,
             is_threat BOOLEAN DEFAULT FALSE,
-            is_anomaly BOOLEAN DEFAULT FALSE
+            is_anomaly BOOLEAN DEFAULT FALSE,
+            ai_explanation TEXT DEFAULT NULL
         )
     ''')
     conn.commit()

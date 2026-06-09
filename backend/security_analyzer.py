@@ -159,8 +159,34 @@ def predict_anomaly(log_entry, provided_features=None):
 
     score = model.decision_function(X_predict)[0]
     is_anomaly = score < ANOMALY_THRESHOLD
+
+    # --- EXPLAINABLE AI (XAI) LOGIC ---
+    explanation = None
     
-    return score, is_anomaly
+    if is_anomaly:
+
+        # First, check the deviations in continuous features to identify the most significant anomaly driver
+        cols_to_scale = ['hour', 'weekday', 'time_since_last_access', 'access_frequency_1h']
+        scaled_values = log_processed[cols_to_scale].iloc[0].abs()
+        
+        max_num_deviation = scaled_values.max()
+        max_num_feature = scaled_values.idxmax()
+        
+        # If the numerical deviation is significative (Z-score > 1.5)
+        if max_num_deviation > 1.5:
+            if max_num_feature == 'hour':
+                explanation = "Unusual access time based on historical routine."
+            elif max_num_feature == 'weekday':
+                explanation = "Atypical access day (e.g., weekend vs weekday)."
+            elif max_num_feature == 'access_frequency_1h':
+                explanation = "Suspiciously high access frequency in the last hour."
+            elif max_num_feature == 'time_since_last_access':
+                explanation = "Unusual inactivity gap prior to this access."
+        else:
+            # If the numerical features don't show a clear anomaly driver, we check the categorical features for rare combinations
+            explanation = f"Unusual spatial access pattern: Role '{log_entry['role']}' does not typically access '{log_entry['area']}' under these conditions."
+    
+    return score, is_anomaly, explanation
 
 def get_admin_emails():
     """Fetches a list of emails for all users with the 'Admin' role."""
@@ -178,37 +204,53 @@ def get_admin_emails():
         cur.close()
         conn.close()
 
-def send_anomaly_alert(log_entry, score):
-    """ Sends an email to ALL administrators in case of an anomaly. """
+def send_anomaly_alert(log_entry, risk_score):
+    """ Sends a formatted HTML email to ALL administrators in case of an AI anomaly. """
+    if not SMTP_EMAIL or not SMTP_PASSWORD:
+        print("⚠️ SMTP credentials not set. Cannot send anomaly alert email.")
+        return 
     
-    # Obtain admin emails from the database
     admin_emails = get_admin_emails()
-    
     if not admin_emails:
         print("ALERT: Anomaly detected but NO ADMINS found in database.")
         return
 
-    subject = f"SUSPICIOUS ACCESS ALERT: Score {score:.4f}"
-    
-    # HTML Body
+    subject = f"⚠️ AI SECURITY ALERT: Anomaly Detected in {log_entry.get('area', 'Unknown')}"
+    xai_reason = log_entry.get('ai_explanation', 'No detailed context available.')
+
+    # Aesthetic HTML Template for AI Anomaly
     body_html = f"""
-        <html>
-        <body>
-            <h2 style="color:red;">Access Anomaly Detected</h2>
-            <p>An anomalous access log was recorded by the security model:</p>
-            <ul>
-                <li><strong>User ID:</strong> {log_entry.get('user_id')}</li>
-                <li><strong>Role:</strong> {log_entry.get('role')}</li>
-                <li><strong>Area:</strong> {log_entry.get('area')}</li>
-                <li><strong>Access Time:</strong> {log_entry.get('access_time')}</li>
-                <li><strong>Reason:</strong> {log_entry.get('reason', 'AI Detected Anomaly')}</li>
-            </ul>
-            <p><strong>Risk Score:</strong> {score:.4f}</p>
-        </body>
-        </html>
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+        <div style="background-color: #f39c12; color: white; padding: 15px 20px;">
+            <h2 style="margin: 0; font-size: 20px;">AI Security Alert</h2>
+        </div>
+        <div style="padding: 20px; color: #333;">
+            <p style="font-size: 16px; margin-top: 0;">The AIloQR Machine Learning Engine has flagged a suspicious access attempt.</p>
+            
+            <div style="background-color: #f9f9f9; padding: 15px; border-left: 4px solid #f39c12; margin-bottom: 20px;">
+                <h3 style="margin-top: 0; color: #2c3e50; font-size: 16px;">📋 Incident Details</h3>
+                <ul style="list-style-type: none; padding: 0; margin: 0; line-height: 1.8;">
+                    <li><strong>User ID:</strong> {log_entry.get('user_id', 'Unknown')}</li>
+                    <li><strong>Role:</strong> {log_entry.get('role', 'Unknown')}</li>
+                    <li><strong>Target Area:</strong> {log_entry.get('area', 'Unknown')}</li>
+                    <li><strong>Time:</strong> {log_entry.get('access_time', 'Unknown')}</li>
+                    <li><strong>Reason:</strong> {log_entry.get('reason', 'AI Detected Anomaly')}</li>
+                </ul>
+            </div>
+
+            <div style="background-color: #fdf2e9; padding: 15px; border-left: 4px solid #e67e22; margin-bottom: 20px;">
+                <h3 style="margin-top: 0; color: #d35400; font-size: 16px;">🧠 AI Analysis</h3>
+                <ul style="list-style-type: none; padding: 0; margin: 0; line-height: 1.8;">
+                    <li><strong>Risk Score:</strong> <span style="color: #d35400; font-weight: bold;">{risk_score:.4f}</span></li>
+                    <li><strong>AI Explanation (XAI):</strong> {xai_reason}</li>
+                </ul>
+            </div>
+
+            <p style="font-weight: bold; color: #c0392b; font-size: 14px;">Action Required: Please access the Administrator Dashboard to review and resolve this threat.</p>
+        </div>
+    </div>
     """
 
-    # --- EMAIL SENDING ---
     try:
         msg = MIMEMultipart()
         msg['From'] = SMTP_EMAIL
@@ -217,51 +259,57 @@ def send_anomaly_alert(log_entry, score):
         
         msg.attach(MIMEText(body_html, 'html'))
 
-        # Connect to Gmail SMTP server
-        server = smtplib.SMTP('smtp.gmail.com', 587, timeout=3)
-        server.starttls() # Secure encryption
+        server = smtplib.SMTP('smtp.gmail.com', 587, timeout=5)
+        server.starttls()
         server.login(SMTP_EMAIL, SMTP_PASSWORD)
         
-        # Send the email to all admins
         text = msg.as_string()
         server.sendmail(SMTP_EMAIL, admin_emails, text)
-        
         server.quit()
+        print(f"[EMAIL] AI Alert sent successfully for User {log_entry.get('user_id')}")
         
     except Exception as e:
-        print(f"❌ Error sending email via Gmail: {e}")
+        print(f"[EMAIL ERROR] Failed to send AI alert via Gmail: {e}")
 
 
 def send_access_denied_alert(log_entry):
-    """ Sends an email to ALL administrators in case of a Hard Rule violation. """
-    # Obtain admin emails from the database
+    """ Sends a formatted HTML email to ALL administrators in case of a Hard Rule violation. """
+    if not SMTP_EMAIL or not SMTP_PASSWORD:
+        print("⚠️ SMTP credentials not set. Cannot send denied alert email.")
+        return 
+
     admin_emails = get_admin_emails()
-    
     if not admin_emails:
-        print("ALERT: denied access detected but NO ADMINS found in database.")
+        print("ALERT: Denied access detected but NO ADMINS found in database.")
         return
 
-    subject = f"UNAUTHORIZED ACCESS ALERT"
-    
-    # HTML Body
+    subject = f"⛔ UNAUTHORIZED ACCESS: Attempt Blocked in {log_entry.get('area', 'Unknown')}"
+
+    # Aesthetic HTML Template for Hard Rule Block
     body_html = f"""
-        <html>
-        <body>
-            <h2 style="color:red;">Unauthorized Access Detected</h2>
-            <p>A potentially dangerous unauthorized access was recorded:</p>
-            <ul>
-                <li><strong>User ID:</strong> {log_entry.get('user_id')}</li>
-                <li><strong>Role:</strong> {log_entry.get('role')}</li>
-                <li><strong>Area:</strong> {log_entry.get('area')}</li>
-                <li><strong>Access Time:</strong> {log_entry.get('access_time')}</li>
-                <li><strong>Reason:</strong> {log_entry.get('reason', 'AI Detected Anomaly')}</li>
-            </ul>
-            <p><strong>Action Required:</strong> Please review this incident promptly.</p>
-        </body>
-        </html>
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+        <div style="background-color: #c0392b; color: white; padding: 15px 20px;">
+            <h2 style="margin: 0; font-size: 20px;">Unauthorized Access Blocked</h2>
+        </div>
+        <div style="padding: 20px; color: #333;">
+            <p style="font-size: 16px; margin-top: 0;">The system has successfully blocked an access attempt based on strict security rules.</p>
+            
+            <div style="background-color: #f9f9f9; padding: 15px; border-left: 4px solid #c0392b; margin-bottom: 20px;">
+                <h3 style="margin-top: 0; color: #2c3e50; font-size: 16px;">📋 Incident Details</h3>
+                <ul style="list-style-type: none; padding: 0; margin: 0; line-height: 1.8;">
+                    <li><strong>User ID:</strong> {log_entry.get('user_id', 'Unknown')}</li>
+                    <li><strong>Role:</strong> {log_entry.get('role', 'Unknown')}</li>
+                    <li><strong>Target Area:</strong> {log_entry.get('area', 'Unknown')}</li>
+                    <li><strong>Time:</strong> {log_entry.get('access_time', 'Unknown')}</li>
+                    <li><strong>Reason:</strong> <span style="color: #c0392b; font-weight: bold;">{log_entry.get('reason', 'Access Denied')}</span></li>
+                </ul>
+            </div>
+
+            <p style="font-weight: bold; color: #c0392b; font-size: 14px;">Action Required: Please access the Administrator Dashboard to review this incident.</p>
+        </div>
+    </div>
     """
 
-    # --- EMAIL SENDING ---
     try:
         msg = MIMEMultipart()
         msg['From'] = SMTP_EMAIL
@@ -270,19 +318,17 @@ def send_access_denied_alert(log_entry):
         
         msg.attach(MIMEText(body_html, 'html'))
 
-        # Connect to Gmail SMTP server
-        server = smtplib.SMTP('smtp.gmail.com', 587, timeout=3)
-        server.starttls() # Secure encryption
+        server = smtplib.SMTP('smtp.gmail.com', 587, timeout=5)
+        server.starttls()
         server.login(SMTP_EMAIL, SMTP_PASSWORD)
         
-        # Send the email to all admins
         text = msg.as_string()
         server.sendmail(SMTP_EMAIL, admin_emails, text)
-        
         server.quit()
+        print(f"[EMAIL] Denied access alert sent successfully for User {log_entry.get('user_id')}")
         
     except Exception as e:
-        print(f"❌ Error sending email via Gmail: {e}")
+        print(f"[EMAIL ERROR] Failed to send denied alert via Gmail: {e}")
 
 
 def fetch_all_logs():
