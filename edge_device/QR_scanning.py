@@ -1,5 +1,5 @@
 import cv2
-from pyzbar.pyzbar import decode
+from pyzbar.pyzbar import decode, ZBarSymbol
 import requests
 import time
 import os
@@ -49,7 +49,7 @@ try:
             continue
 
         # QR decodification
-        qrs = decode(frame)
+        qrs = decode(frame, symbols=[ZBarSymbol.QRCODE])
         for qr in qrs:
             qr_data = qr.data.decode('utf-8')
             print("\nQR Detected!")

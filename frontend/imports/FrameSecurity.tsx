@@ -14,7 +14,8 @@ import {
   Search,
   CheckCircle,
   Sparkles,
-  FileCheck
+  FileCheck,
+  X
 } from "lucide-react";
 
 // --- Utility for classes ---
@@ -25,7 +26,6 @@ function cn(...classes: (string | undefined | null | false)[]) {
 const API_URL = import.meta.env.VITE_API_URL || '';
 
 // --- Interfaces ---
-
 interface SecurityIncident {
   id: string;
   severity: 'high' | 'medium' | 'low';
@@ -99,6 +99,69 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
     return <h2 className="text-2xl md:text-3xl font-semibold text-black text-left">{children}</h2>;
 }
 
+// --- Custom Confirmation Modal for System Lockdown ---
+interface LockdownModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    onConfirm: () => void;
+    isLockingDown: boolean;
+    isLoading: boolean;
+}
+
+function LockdownModal({ isOpen, onClose, onConfirm, isLockingDown, isLoading }: LockdownModalProps) {
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                
+                {/* Header */}
+                <div className={cn("p-6 flex items-center gap-4", isLockingDown ? "bg-red-50" : "bg-gray-50")}>
+                    <div className={cn("p-3 rounded-full", isLockingDown ? "bg-red-100 text-red-600" : "bg-gray-200 text-gray-700")}>
+                        {isLockingDown ? <ShieldAlert className="w-8 h-8" /> : <Unlock className="w-8 h-8" />}
+                    </div>
+                    <div>
+                        <h3 className="text-xl font-bold text-gray-900">
+                            {isLockingDown ? "System Lockdown" : "Unlock System"}
+                        </h3>
+                        <p className="text-sm text-gray-500 font-medium">Critical Security Action</p>
+                    </div>
+                </div>
+
+                {/* Body */}
+                <div className="p-6">
+                    <p className="text-gray-700 text-base">
+                        {isLockingDown 
+                            ? "Are you sure you want to initiate a SYSTEM LOCKDOWN? All standard user access will be immediately suspended across all areas."
+                            : "Are you sure you want to UNLOCK the system? Normal access rules will be restored for all users."}
+                    </p>
+                </div>
+
+                {/* Footer / Actions */}
+                <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+                    <button 
+                        onClick={onClose} 
+                        disabled={isLoading}
+                        className="px-4 py-2 font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        onClick={onConfirm}
+                        disabled={isLoading}
+                        className={cn(
+                            "px-5 py-2 font-medium text-white rounded-lg transition-colors flex items-center justify-center gap-2 shadow-sm disabled:opacity-50",
+                            isLockingDown ? "bg-red-600 hover:bg-red-700" : "bg-gray-800 hover:bg-gray-900"
+                        )}
+                    >
+                        {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : (isLockingDown ? "Confirm Lockdown" : "Confirm Unlock")}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // Toggle Button (Shield)
 interface SecurityActionToggleProps {
     status: 'resolved' | 'pending';
@@ -113,11 +176,6 @@ function SecurityActionToggle({ status, isThreat, onClick, isLoading, isDisabled
     const timerRef = useRef<NodeJS.Timeout | null>(null);
 
     const isPending = status === 'pending';
-    
-    // Tooltip logic based on state
-    // Pending: Mark as False Positive (Safe)
-    // Resolved & Threat: Downgrade to False Positive
-    // Resolved & Safe: Escalate back to Active Threat
     
     const tooltipText = isPending 
         ? "Mark as False Positive (Safe)"
@@ -151,13 +209,10 @@ function SecurityActionToggle({ status, isThreat, onClick, isLoading, isDisabled
                 disabled={isDisabled || isLoading}
                 className={cn(
                     "p-2 rounded-full transition-all duration-200 border shadow-sm",
-                    // Logic for button colors
                     isPending 
                         ? "bg-gray-50 border-gray-200 text-gray-400 hover:bg-green-50 hover:text-green-600 hover:border-green-200 hover:scale-105"
                         : isThreat
-                            // WAS THREAT -> Downgrade (Green Hover)
                             ? "bg-white border-gray-200 text-gray-400 hover:bg-green-50 hover:text-green-600 hover:border-green-200"
-                            // WAS SAFE -> Escalate (Red Hover)
                             : "bg-white border-gray-200 text-gray-400 hover:bg-red-50 hover:text-red-600 hover:border-red-200",
                     
                     (isDisabled || isLoading) && "opacity-50 cursor-not-allowed transform-none"
@@ -225,7 +280,7 @@ function ReviewButton({ onClick, isLoading, isDisabled }: ReviewButtonProps) {
                 {isLoading ? (
                     <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
                 ) : (
-                    <CheckCircle className="w-5 h-5" />
+                    <FileCheck className="w-5 h-5" />
                 )}
             </button>
 
@@ -241,7 +296,6 @@ function ReviewButton({ onClick, isLoading, isDisabled }: ReviewButtonProps) {
     );
 }
 
-// Simple Icon component for the card
 function BanIcon({ className }: { className?: string }) {
     return (
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -252,7 +306,6 @@ function BanIcon({ className }: { className?: string }) {
 }
 
 // --- Main Component ---
-
 export default function FrameSecurity() {
   const navigate = useNavigate();
   const [data, setData] = useState<SecurityData | null>(null);
@@ -260,7 +313,11 @@ export default function FrameSecurity() {
   const [error, setError] = useState<string | null>(null);
   const [loadingDots, setLoadingDots] = useState("");
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  
+  // Lockdown states
   const [lockdownLoading, setLockdownLoading] = useState(false);
+  const [isLockdownModalOpen, setIsLockdownModalOpen] = useState(false);
+
   const { socket } = useWebSocket();
 
   useEffect(() => {
@@ -309,7 +366,6 @@ export default function FrameSecurity() {
         return;
     }
     
-    // Only show loading screen if it's not a background update
     if (!isBackgroundUpdate){
         setLoading(true);
     } 
@@ -350,10 +406,7 @@ export default function FrameSecurity() {
     let isFetching = false;
 
     const handleUpdate = async (data: any) => {
-            
-            if (isFetching) {
-                return; 
-            }
+            if (isFetching) return; 
             
             isFetching = true;
             try {
@@ -395,19 +448,10 @@ export default function FrameSecurity() {
       if (isGlobalLoading) return;
       setActionLoadingId(incident.id);
       const token = getToken();
-
-      // Determine action based on current state
-      // If resolved:
-      //    - Was Threat? -> Resolve (mark safe/false positive)
-      //    - Was Safe? -> Escalate (mark active threat)
-      // If pending:
-      //    - -> Resolve (mark safe)
       
       let action = 'resolve'; 
       if (incident.status === 'resolved') {
           action = incident.is_threat ? 'resolve' : 'escalate';
-      } else {
-          action = 'resolve';
       }
 
       try {
@@ -446,37 +490,35 @@ export default function FrameSecurity() {
       } finally { setActionLoadingId(null); }
   };
 
-  const handleToggleLockdown = async () => {
-    if (isGlobalLoading || !data) return;
-    
-    const isLockingDown = !data.system_lockdown;
-    
-    const confirmMessage = isLockingDown
-        ? "⚠️ CRITICAL ACTION ⚠️\n\nAre you sure you want to initiate a SYSTEM LOCKDOWN?"
-        : "Are you sure you want to UNLOCK the system?";
-        
-    if (!window.confirm(confirmMessage)) return;
+  // Triggers the UI modal instead of native confirm
+  const initiateLockdownToggle = () => {
+      if (isGlobalLoading || !data) return;
+      setIsLockdownModalOpen(true);
+  };
 
-    const token = getToken();
-    setLockdownLoading(true);
+  // Executes the actual backend request after modal confirmation
+  const confirmLockdown = async () => {
+      const token = getToken();
+      setLockdownLoading(true);
 
-    try {
-        const response = await fetch(`${API_URL}/api/admin/system-lockdown`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (response.ok) {
-            await new Promise(resolve => setTimeout(resolve, 500)); 
-            await fetchSecurityData(true);
-        } else {
-            alert("Failed to toggle system lockdown.");
-        }
-    } catch (error) {
-        console.error("Error toggling lockdown:", error);
-        alert("Network error.");
-    } finally {
-        setLockdownLoading(false);
-    }
+      try {
+          const response = await fetch(`${API_URL}/api/admin/system-lockdown`, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (response.ok) {
+              await new Promise(resolve => setTimeout(resolve, 500)); 
+              await fetchSecurityData(true);
+          } else {
+              alert("Failed to toggle system lockdown.");
+          }
+      } catch (error) {
+          console.error("Error toggling lockdown:", error);
+          alert("Network error.");
+      } finally {
+          setLockdownLoading(false);
+          setIsLockdownModalOpen(false); // Close modal on completion
+      }
   };
 
 
@@ -496,9 +538,19 @@ export default function FrameSecurity() {
   }
 
   return (
-        <div className="flex flex-col min-h-screen bg-background">
+        <div className="flex flex-col min-h-screen bg-background relative">
+            
+            {/* Lockdown Confirmation Modal */}
+            <LockdownModal 
+                isOpen={isLockdownModalOpen}
+                onClose={() => setIsLockdownModalOpen(false)}
+                onConfirm={confirmLockdown}
+                isLockingDown={!data?.system_lockdown}
+                isLoading={lockdownLoading}
+            />
+
             {/* Header Section */}
-            <div className="fixed top-0 left-0 right-0 z-40 bg-background pt-6 md:pt-8">
+            <div className="fixed top-0 left-0 right-0 z-30 bg-background pt-6 md:pt-8">
                 <div className="w-full mx-auto px-4 sm:px-6 lg:px-10">
                     <div className="relative flex justify-center items-center h-12 md:h-14 mb-3">
                         <button onClick={() => navigate('/admin')} disabled={isGlobalLoading} className={`absolute left-0 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 md:w-12 md:h-12 bg-[#eeeeee] hover:bg-[#e0e0e0] active:bg-[#d5d5d5] rounded-full transition-colors ${isGlobalLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
@@ -519,14 +571,14 @@ export default function FrameSecurity() {
             <div className="flex-grow w-full flex flex-col gap-10 px-4 sm:px-6 lg:px-10 pb-12 pt-8 md:pt-12">
 
                 {loading && !data ? (
-                    <div className="flex flex-col items-center justify-center h-[75vh] w-full">
+                    <div className="flex flex-col items-center justify-center h-[60vh] w-full">
                         <div className="relative">
                             <p className="text-gray-500 font-medium">Fetching security data</p>
                             <span className="absolute left-full top-0 text-gray-500 font-medium">{loadingDots}</span>
                         </div>
                     </div>
                 ) : (    
-                    <div className="w-full px-4 sm:px-6 lg:px-10 animate-in fade-in duration-500">
+                    <div className="w-full animate-in fade-in duration-500">
 
                         <div className="w-full mb-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
                             <SectionTitle>Security Overview</SectionTitle>
@@ -604,19 +656,15 @@ export default function FrameSecurity() {
                                                 <div className="flex flex-col gap-1 mb-3 md:mb-0">
                                                     <div className="flex items-center gap-3">
                                                         
-                                                        {/* SEVERITY BADGE */}
                                                         <span className={cn("px-2 py-1 rounded-md text-xs font-bold uppercase border", getSeverityColor(incident.severity))}>
                                                             {incident.severity}
                                                         </span>
                                                         
-                                                        {/* TYPE TEXT */}
                                                         <span className={cn("font-medium flex items-center gap-2", incident.status === 'pending' ? "text-red-900" : "text-gray-700")}>
                                                             {incident.type}
                                                         </span>
 
-                                                        {/* STATUS BADGES */}
                                                         {incident.status === 'pending' ? (
-                                                            // PENDING STATE
                                                             incident.is_ai ? (
                                                                 <span className="flex items-center text-xs font-bold text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full border border-indigo-200">
                                                                     <Sparkles className="w-3 h-3 mr-1" /> AI Suspicion
@@ -627,7 +675,6 @@ export default function FrameSecurity() {
                                                                 </span>
                                                             )
                                                         ) : (
-                                                            // RESOLVED STATE
                                                             incident.is_threat ? (
                                                                 <span className="flex items-center text-xs font-bold text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200">
                                                                     <FileCheck className="w-3 h-3 mr-1 text-gray-500" /> Reviewed Threat
@@ -674,19 +721,18 @@ export default function FrameSecurity() {
                         <div className="w-full">
                             <h3 className="text-xl md:text-2xl font-semibold text-gray-800 mb-4">Security Actions</h3>
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                                <ActionButton onClick={() => console.log('Audit Logs')} variant="secondary" icon={Search} disabled={isGlobalLoading}>
+                                <ActionButton onClick={() => navigate('/audit-logs')} variant="secondary" icon={Search} disabled={isGlobalLoading}>
                                     Audit Logs
                                 </ActionButton>
                                 <ActionButton onClick={() => console.log('Rules')} variant="secondary" icon={Lock} disabled={isGlobalLoading}>
                                     Firewall Rules
                                 </ActionButton>
                                 
-                                {/* LOCKDOWN BUTTON */}
+                                {/* TRIGGER MODAL INSTEAD OF NATIVE CONFIRM */}
                                 <ActionButton 
-                                    onClick={handleToggleLockdown} 
+                                    onClick={initiateLockdownToggle} 
                                     variant={data?.system_lockdown ? "danger" : "primary"} 
                                     icon={data?.system_lockdown ? Unlock : ShieldAlert}
-                                    isLoading={lockdownLoading}
                                     disabled={isGlobalLoading}
                                 >
                                     {data?.system_lockdown ? "Unlock System" : "System Lockdown"}

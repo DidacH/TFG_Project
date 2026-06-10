@@ -376,3 +376,36 @@ def delete_user_by_email(email):
 
 def verify_password(stored_hash, input_password):
     return stored_hash == hash_password(input_password)
+
+
+def show_all_user_states():
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('SELECT email, is_blocked FROM users')
+        users = cur.fetchall()
+        for user in users:
+            print(f"Email: {user['email']}, Blocked: {user['is_blocked']}")
+    except Exception as e:
+        print(f"Error in show_all_user_states: {e}")
+    finally:
+        if cur: cur.close()
+        if conn: conn.close()
+
+
+if __name__ == "__main__":
+    #delete_tables()  #Use with caution - deletes all data
+
+    #Init tables
+    # init_roles_table()
+    # init_users_table()
+    # init_logs_table()
+    # init_access_rules_table()
+    # insert_initial_access_rules()
+    # init_system_config_table()
+    # insert_default_system_config()
+    # init_alert_rules_table()
+
+    show_all_user_states()

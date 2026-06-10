@@ -927,7 +927,7 @@ def api_security_dashboard_data(user_id, role):
                 })
 
         recent_incidents_response.sort(key=lambda x: x['timestamp'], reverse=True)
-        recent_incidents_response = recent_incidents_response[:10]
+        recent_incidents_response = recent_incidents_response[:5]
         
         return no_cache(jsonify({
             'admin_name': admin_name,
@@ -943,6 +943,146 @@ def api_security_dashboard_data(user_id, role):
 
     except Exception as e:
         print(f"CRITICAL ERROR in security_dashboard: {e}")
+        return jsonify({'message': f'Internal Server Error: {str(e)}'}), 500
+
+
+@app.route('/api/admin/audit-logs', methods=['GET'])
+@token_required
+@admin_required
+def api_get_audit_logs(user_id, role):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # Incidents from the last 30 days or any unresolved threats/anomalies regardless of time
+        thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
+
+        cur.execute("""
+            SELECT id, user_id, role, area, access_time, entry_allowed, reason, error_code, is_threat, is_reviewed, is_anomaly, risk_score 
+            FROM logs 
+            WHERE 
+                (entry_allowed IS FALSE OR is_threat IS TRUE OR is_anomaly IS TRUE)
+            AND 
+                (access_time >= %s OR (is_threat IS TRUE AND is_reviewed IS FALSE) OR (is_anomaly IS TRUE AND is_reviewed IS FALSE))
+            ORDER BY access_time DESC
+        """, (thirty_days_ago,))
+        
+        all_logs = cur.fetchall()
+        incidents = []
+        
+        if all_logs:
+            cleaned_logs = []
+            for log in all_logs:
+                d_log = dict(log)
+                if d_log['is_anomaly'] and d_log['entry_allowed'] == 1:
+                    d_log['error_code'] = 'AI_ANOMALY'
+                if not d_log.get('error_code'):
+                     d_log['error_code'] = 'UNKNOWN'
+                cleaned_logs.append(d_log)
+
+            current_cluster = {
+                'logs': [dict(cleaned_logs[0])],
+                'user_id': cleaned_logs[0]['user_id'],
+                'error_code': cleaned_logs[0]['error_code'],
+                'last_time': cleaned_logs[0]['access_time'] 
+            }
+            
+            for i in range(1, len(cleaned_logs)):
+                log = dict(cleaned_logs[i])
+                log_time = log['access_time']
+                if isinstance(log_time, str):
+                    log_time = datetime.strptime(log_time, "%Y-%m-%d %H:%M:%S")
+                
+                prev_time = current_cluster['last_time']
+                if isinstance(prev_time, str):
+                    prev_time = datetime.strptime(prev_time, "%Y-%m-%d %H:%M:%S")
+
+                time_diff = prev_time - log_time
+                
+                is_same_user = log['user_id'] == current_cluster['user_id']
+                is_same_error = log['error_code'] == current_cluster['error_code']
+                is_within_window = time_diff < timedelta(minutes=SESSION_TIMEOUT_MINUTES)
+                
+                if is_same_user and is_same_error and is_within_window:
+                    current_cluster['logs'].append(log)
+                else:
+                    incidents.append(current_cluster)
+                    current_cluster = {
+                        'logs': [log],
+                        'user_id': log['user_id'],
+                        'error_code': log['error_code'],
+                        'last_time': log['access_time']
+                    }
+            incidents.append(current_cluster)
+
+        audit_incidents = []
+        
+        for incident in incidents:
+            logs_in_group = incident['logs']
+            count = len(logs_in_group)
+            representative_log = logs_in_group[0] 
+            
+            u_id = representative_log['user_id']
+            error_code = representative_log['error_code']
+            reason = representative_log['reason']
+
+            if error_code == 'AI_ANOMALY':
+                ai_severity = evaluate_ai_severity(representative_log['risk_score'])
+                if ai_severity == "CRITICAL":
+                    severity = "high"
+                    base_score = 10
+                elif ai_severity == "Medium":
+                    severity = "medium"
+                    base_score = 5
+                else:
+                    severity = "low"
+                    base_score = 2
+            else:
+                base_score = RISK_SCORES.get(error_code, 1)
+                severity = 'low'
+                if base_score >= 10: severity = 'high'
+                elif base_score >= 3: severity = 'medium'
+                
+                if count >= 3 and severity == 'low': severity = 'medium'
+                if count >= 5: severity = 'high'
+
+            db_threat_flag = any(l.get('is_threat') for l in logs_in_group)
+            db_anomaly_flag = any(l.get('is_anomaly') for l in logs_in_group)
+            all_reviewed = all(l.get('is_reviewed') for l in logs_in_group)
+            
+            is_active = False
+            if not all_reviewed:
+                if db_threat_flag or db_anomaly_flag or severity in ['high', 'medium']:
+                    is_active = True
+
+            status = 'pending' if is_active else 'resolved'
+
+            display_type = reason
+            if error_code == 'AI_ANOMALY':
+                display_type = f"Possible Threat: {reason}"
+            elif count > 1:
+                display_type = f"{reason} ({count} attempts in 10 min)"
+            
+            audit_incidents.append({
+                'id': representative_log['id'],
+                'severity': severity,
+                'type': display_type,
+                'description': error_code,
+                'source_id': u_id,
+                'timestamp': str(incident['last_time']),
+                'status': status,
+                'is_ai': error_code == 'AI_ANOMALY',
+                'count': count,
+                'is_threat': db_threat_flag
+            })
+
+        cur.close()
+        conn.close()
+        
+        return jsonify(audit_incidents), 200
+
+    except Exception as e:
+        print(f"Error fetching audit logs: {e}")
         return jsonify({'message': f'Internal Server Error: {str(e)}'}), 500
     
 
@@ -1024,7 +1164,7 @@ def background_access_processing(qr_data, target_area):
             # Unpack the 3 variables returned by predict_anomaly
             risk_score, is_anomaly, ai_explanation = predict_anomaly(log_entry)
 
-            log_entry['ai_explanation'] = explanation if is_anomaly else None
+            log_entry['ai_explanation'] = ai_explanation if is_anomaly else None
 
             if is_anomaly:
                 severity = evaluate_ai_severity(risk_score)
