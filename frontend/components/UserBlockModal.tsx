@@ -33,7 +33,7 @@ export default function UserBlockModal({ isOpen, onClose, user, onConfirm }: Use
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-white rounded-xl shadow-xl w-[90%] max-w-md overflow-hidden">
                 <div className={cn("p-4 text-white flex items-center gap-2", user.is_blocked ? "bg-green-600" : "bg-red-600")}>
                     <AlertTriangle className="w-5 h-5" />
