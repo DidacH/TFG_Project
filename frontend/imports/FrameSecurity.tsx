@@ -724,8 +724,8 @@ export default function FrameSecurity() {
                                 <ActionButton onClick={() => navigate('/audit-logs')} variant="secondary" icon={Search} disabled={isGlobalLoading}>
                                     Audit Logs
                                 </ActionButton>
-                                <ActionButton onClick={() => console.log('Rules')} variant="secondary" icon={Lock} disabled={isGlobalLoading}>
-                                    Firewall Rules
+                                <ActionButton onClick={() => navigate('/policies')} variant="secondary" icon={Lock} disabled={isGlobalLoading}>
+                                    Firewall & Rules
                                 </ActionButton>
                                 
                                 {/* TRIGGER MODAL INSTEAD OF NATIVE CONFIRM */}

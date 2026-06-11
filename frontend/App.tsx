@@ -8,6 +8,7 @@ import UsersPage from './pages/UsersPage';
 import AuditLogsPage from './pages/AuditLogsPage';
 import ViewLogsPage from './pages/ViewLogsPage';
 import UserProfilePage from "./pages/UserProfilePage";
+import PoliciesPage from "./pages/PoliciesPage";
 import { WebSocketProvider } from './context/WebSocketContext';
 
 
@@ -38,6 +39,7 @@ export default function App() {
                 <Route path="/view-logs" element={<ViewLogsPage />} />
                 <Route path="/profile" element={<UserProfilePage />} />
                 <Route path="/user/:id" element={<UserProfilePage />} />
+                <Route path="/policies" element={<PoliciesPage />} />
             </Route>
 
             {/* Catch-all route for unmatched paths */}
