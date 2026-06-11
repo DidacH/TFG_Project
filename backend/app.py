@@ -270,6 +270,75 @@ def api_access_scan():
 #=================================================
 # === PROTECTED API ENDPOINTS (USER) ===
 #=================================================
+
+def get_user_profile_data(target_user_id):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Obtain personal user data
+        cur.execute("""
+            SELECT id, name, email, role, registered_at, is_blocked 
+            FROM users WHERE id = %s
+        """, (target_user_id,))
+        user_data = cur.fetchone()
+        
+        if not user_data:
+            return jsonify({'message': 'User not found'}), 404
+            
+        # Obtain exclusively the logs for this user (maximum 500 per history for eficiency)
+        cur.execute("""
+            SELECT id, user_id, role, area, access_time, entry_allowed, reason, error_code, risk_score, is_anomaly, is_threat 
+            FROM logs 
+            WHERE user_id = %s
+            ORDER BY access_time DESC
+            LIMIT 500
+        """, (target_user_id,))
+        logs = cur.fetchall()
+        
+        cur.close()
+        conn.close()
+        
+        # Format logs for response
+        logs_list = []
+        for l in logs:
+            logs_list.append({
+                'id': l['id'],
+                'user_id': l['user_id'],
+                'role': l['role'],
+                'area': l['area'],
+                'access_time': str(l['access_time']),
+                'entry_allowed': l['entry_allowed'],
+                'reason': l['reason'],
+                'error_code': l['error_code'],
+                'risk_score': l['risk_score'],
+                'is_anomaly': l['is_anomaly'],
+                'is_threat': l['is_threat']
+            })
+            
+        profile_data = {
+            'id': user_data['id'],
+            'name': user_data['name'],
+            'email': user_data['email'],
+            'role': user_data['role'],
+            'registered_at': str(user_data['registered_at']),
+            'is_blocked': user_data['is_blocked'],
+            'logs': logs_list
+        }
+        
+        return jsonify(profile_data), 200
+        
+    except Exception as e:
+        print(f"Error fetching user profile: {e}")
+        return jsonify({'message': f'Error fetching profile: {str(e)}'}), 500
+
+# Endpoint for regular users: "My Profile" (users can access only their own profile)
+@app.route('/api/profile', methods=['GET'])
+@token_required
+def api_get_my_profile(user_id, role):
+    return get_user_profile_data(user_id)
+
+
 @app.route('/api/dashboard-data', methods=['GET'])
 @token_required
 def api_dashboard_data(user_id, role):
@@ -369,6 +438,16 @@ def api_refresh_qr(user_id, role):
 #=================================================
 # === PROTECTED API ENDPOINTS (ADMIN) ===
 #=================================================
+
+# Endpoint for admins: "Inspect User" (Only Admins)
+@app.route('/api/admin/user/<target_user_id>', methods=['GET'])
+@token_required
+@admin_required
+def api_get_user_profile(user_id, role, target_user_id):
+    # Passa el target_user_id de la URL
+    return get_user_profile_data(target_user_id)
+
+
 @app.route('/api/admin/dashboard-data', methods=['GET'])
 @token_required
 @admin_required
@@ -1084,6 +1163,47 @@ def api_get_audit_logs(user_id, role):
     except Exception as e:
         print(f"Error fetching audit logs: {e}")
         return jsonify({'message': f'Internal Server Error: {str(e)}'}), 500
+
+@app.route('/api/admin/logs', methods=['GET'])
+@token_required
+@admin_required
+def api_get_all_logs(user_id, role):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Limit to last 2000 logs for performance, can be adjusted as needed
+        cur.execute("""
+            SELECT id, user_id, role, area, access_time, entry_allowed, reason, error_code, risk_score, is_anomaly, is_threat 
+            FROM logs 
+            ORDER BY access_time DESC
+            LIMIT 2000
+        """)
+        logs = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        logs_list = []
+        for l in logs:
+            logs_list.append({
+                'id': l['id'],
+                'user_id': l['user_id'],
+                'role': l['role'],
+                'area': l['area'],
+                'access_time': str(l['access_time']),
+                'entry_allowed': l['entry_allowed'],
+                'reason': l['reason'],
+                'error_code': l['error_code'],
+                'risk_score': l['risk_score'],
+                'is_anomaly': l['is_anomaly'],
+                'is_threat': l['is_threat']
+            })
+            
+        return jsonify(logs_list), 200
+        
+    except Exception as e:
+        print(f"Error fetching all logs: {e}")
+        return jsonify({'message': f'Error fetching logs: {str(e)}'}), 500
     
 
 #=================================================

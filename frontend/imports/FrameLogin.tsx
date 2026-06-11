@@ -1,21 +1,19 @@
 import { useState, useEffect, useRef, forwardRef, Ref } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react"; 
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
-// Reusable Components
+// --- Reusable Components ---
 
-
-//Generic input component
-//Used for email and name fields
+// Generic input component
 interface InputProps {
   value: string;
   onChange: (value: string) => void;
-  onBlur: () => void; //To track when the user leaves the field
+  onBlur: () => void;
   placeholder: string;
   type?: "text" | "email";
-  hasError?: boolean; //To apply red border on error
+  hasError?: boolean;
 }
 
 const Input = forwardRef(({ value, onChange, onBlur, placeholder, type = "text", hasError = false }: InputProps, ref: Ref<HTMLInputElement>) => {
@@ -74,32 +72,45 @@ const PasswordInput = forwardRef(({ value, onChange, onBlur, placeholder, hasErr
     );
 });
 
-//Reusable button component with loading state and 2 variants
+// Reusable action button supporting both loading and disabled states
 interface ActionButtonProps {
     onClick: () => void;
     children: React.ReactNode;
     variant?: 'primary' | 'secondary';
     isLoading?: boolean;
+    disabled?: boolean;
 }
 
-function ActionButton({ onClick, children, variant = 'primary', isLoading = false }: ActionButtonProps) {
-    const baseClasses = "box-border cursor-pointer flex h-[50px] items-center justify-center rounded-[8px] w-full transition-colors font-medium";
+function ActionButton({ onClick, children, variant = 'primary', isLoading = false, disabled = false }: ActionButtonProps) {
+    const baseClasses = "box-border flex h-[50px] items-center justify-center rounded-[8px] w-full transition-all duration-200 font-medium";
     const variantClasses = {
-        primary: "bg-[#c8102e] hover:bg-[#b00f29] active:bg-[#a00d25] text-white",
-        secondary: "bg-[#eeeeee] hover:bg-[#e0e0e0] active:bg-[#d5d5d5] text-black"
+        primary: "bg-[#c8102e] text-white",
+        secondary: "bg-[#eeeeee] text-black"
     };
+    
+    const isButtonDisabled = isLoading || disabled;
+
+    const stateClasses = isLoading 
+        ? "opacity-60 cursor-wait scale-[0.98]" 
+        : disabled
+            ? "opacity-50 cursor-not-allowed"
+            : variant === 'primary' 
+                ? "hover:bg-[#b00f29] active:bg-[#a00d25] cursor-pointer shadow-sm hover:shadow" 
+                : "hover:bg-[#e0e0e0] active:bg-[#d5d5d5] cursor-pointer";
+
     return (
         <button 
+            type="button"
             onClick={onClick} 
-            className={`${baseClasses} ${variantClasses[variant]} ${isLoading ? 'opacity-75 cursor-not-allowed' : ''}`}
-            disabled={isLoading}
+            className={`${baseClasses} ${variantClasses[variant]} ${stateClasses}`}
+            disabled={isButtonDisabled}
         >
-            {isLoading ? <Loader2 className="animate-spin h-6 w-6" /> : <p className="text-lg md:text-xl">{children}</p>}
+            <p className="text-lg md:text-xl">{children}</p>
         </button>
     );
 }
 
-//Divider
+// Divider
 function Divider() {
   return (
     <div className="flex gap-4 h-[25px] items-center justify-center w-full">
@@ -110,15 +121,12 @@ function Divider() {
   );
 }
 
-
-// Main Login Frame Component
+// --- Main Login Frame Component ---
 export default function FrameLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   
-  //State for individual field errors
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
-  //State to track which fields have been touched
   const [touched, setTouched] = useState<{ email?: boolean; password?: boolean }>({});
   
   const [serverError, setServerError] = useState("");
@@ -143,7 +151,6 @@ export default function FrameLogin() {
     return newErrors;
   };
   
-  //Re-validate on change, but only for touched fields
   useEffect(() => {
     const newErrors = validate();
     const activeErrors: { email?: string; password?: string } = {};
@@ -164,11 +171,11 @@ export default function FrameLogin() {
     setTouched(prev => ({ ...prev, [field]: true }));
   };
   
-  //Handle form submission
+  // Handle form submission
   const handleContinue = async () => {
     setServerError(""); 
     setSuccessMessage("");
-    setTouched({ email: true, password: true }); //Mark all as touched on submit
+    setTouched({ email: true, password: true }); 
 
     const formErrors = validate();
     if (Object.keys(formErrors).length > 0) {
@@ -190,35 +197,37 @@ export default function FrameLogin() {
       localStorage.setItem('token', data.token);
       localStorage.setItem('role', data.role);
 
-      navigate('/dashboard');
+      if (data.role === 'Admin') {
+          navigate('/admin');
+      } else {
+          navigate('/dashboard');
+      }
     } catch (err: any) {
       setServerError(err.message);
-    } finally {
-      setIsLoading(false);
+      setIsLoading(false); 
     }
   };
 
-  //Handle forgot password click
   const handleForgotPassword = () => console.log("Forgot password clicked");
 
-  //Navigate to register page
   const navigateToRegister = () => navigate('/register');
 
-  //Enter key works as submit
   const handleKeyDown = (event: React.KeyboardEvent) => {
-    if (event.key === 'Enter' && !isLoading) {
+    // Prevent actions if loading
+    if (isLoading) return;
+
+    if (event.key === 'Enter') {
       handleContinue();
     }
 
-    //Arrow key navigation between inputs
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-        event.preventDefault(); //Prevent default scrolling behavior
+        event.preventDefault(); 
         const currentIndex = inputs.findIndex(ref => ref.current === document.activeElement);
 
         let nextIndex;
         if (event.key === 'ArrowDown') {
             nextIndex = (currentIndex + 1) % inputs.length;
-        } else { //ArrowUp
+        } else { 
             nextIndex = (currentIndex - 1 + inputs.length) % inputs.length;
         }
 
@@ -228,7 +237,6 @@ export default function FrameLogin() {
 
   return (
     <div className="w-11/12 max-w-xs md:max-w-md lg:max-w-lg xl:max-w-xl flex flex-col items-center gap-4 p-4" onKeyDown={handleKeyDown}>
-      {/* TITLES */}
       <div className="text-center mb-4 md:mb-6">
         <p className="font-semibold text-3xl md:text-4xl xl:text-5xl text-black">
           Login
@@ -238,19 +246,17 @@ export default function FrameLogin() {
         </p>
       </div>
 
-      {/* GLOBAL MESSAGES */}
       {successMessage && (
         <div className="w-full bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-md text-center mb-2">
           <p>{successMessage}</p>
         </div>
       )}
       {serverError && (
-        <div className="w-full bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md text-center mb-2">
+        <div className="w-full bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md text-center mb-2 animate-in fade-in zoom-in-95 duration-200">
           <p>{serverError}</p>
         </div>
       )}
 
-      {/* FORM */}
       <div className="w-full flex flex-col gap-1">
         <div className="flex flex-col mb-2">
             <Input 
@@ -277,21 +283,23 @@ export default function FrameLogin() {
         </div>
       </div>
 
-      {/* FORGOT PASSWORD */}
       <button
+        type="button"
         onClick={handleForgotPassword}
-        className="self-start font-light text-sm text-black underline hover:opacity-80 active:opacity-60 transition-opacity mt-1"
+        disabled={isLoading}
+        className={`self-start font-light text-sm text-black underline mt-1 transition-opacity ${isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80 active:opacity-60'}`}
       >
         Forgot password?
       </button>
 
-      {/* ACTION BUTTONS */}
       <div className="w-full flex flex-col gap-3 md:gap-4 mt-4">
+        {/* Primary button handles the loading state */}
         <ActionButton onClick={handleContinue} variant="primary" isLoading={isLoading}>
             Continue
         </ActionButton>
         <Divider />
-        <ActionButton onClick={navigateToRegister} variant="secondary">
+        {/* Secondary button is disabled during loading */}
+        <ActionButton onClick={navigateToRegister} variant="secondary" disabled={isLoading}>
             Register here
         </ActionButton>
       </div>

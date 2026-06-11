@@ -1,14 +1,12 @@
 import { useState, useEffect, useRef, forwardRef, Ref } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronDown, Eye, EyeOff, Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { ChevronDown, Eye, EyeOff, CheckCircle2, XCircle } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
-// Reusable Components
+// --- Reusable Components ---
 
-
-//Generic input component
-//Used for email and name fields
+// Generic input component
 interface InputProps {
   value: string;
   onChange: (value: string) => void;
@@ -28,7 +26,7 @@ const Input = forwardRef(({ value, onChange, onBlur, placeholder, type = "text",
   );
 });
 
-//Password specific input component with visibility toggle
+// Password specific input component
 interface PasswordInputProps {
     value: string;
     onChange: (value: string) => void;
@@ -63,7 +61,7 @@ const PasswordInput = forwardRef(({ value, onChange, onFocus, onBlur, placeholde
     );
 });
 
-//Dropdown component for selecting user role
+// Dropdown component
 interface RoleDropdownProps {
     value: string;
     onChange: (value: string) => void;
@@ -101,32 +99,45 @@ const RoleDropdown = forwardRef(({ value, onChange, onBlur, options, hasError = 
     );
 });
 
-//Reusable button component with loading state and 2 variants
+// Reusable action button supporting both loading and disabled states
 interface ActionButtonProps {
     onClick: () => void;
     children: React.ReactNode;
     variant?: 'primary' | 'secondary';
     isLoading?: boolean;
+    disabled?: boolean;
 }
 
-function ActionButton({ onClick, children, variant = 'primary', isLoading = false }: ActionButtonProps) {
-    const baseClasses = "box-border cursor-pointer flex h-[50px] items-center justify-center rounded-[8px] w-full transition-colors font-medium";
+function ActionButton({ onClick, children, variant = 'primary', isLoading = false, disabled = false }: ActionButtonProps) {
+    const baseClasses = "box-border flex h-[50px] items-center justify-center rounded-[8px] w-full transition-all duration-200 font-medium";
     const variantClasses = {
-        primary: "bg-[#c8102e] hover:bg-[#b00f29] active:bg-[#a00d25] text-white",
-        secondary: "bg-[#eeeeee] hover:bg-[#e0e0e0] active:bg-[#d5d5d5] text-black"
+        primary: "bg-[#c8102e] text-white",
+        secondary: "bg-[#eeeeee] text-black"
     };
+
+    const isButtonDisabled = isLoading || disabled;
+
+    const stateClasses = isLoading 
+        ? "opacity-60 cursor-wait scale-[0.98]" 
+        : disabled
+            ? "opacity-50 cursor-not-allowed"
+            : variant === 'primary' 
+                ? "hover:bg-[#b00f29] active:bg-[#a00d25] cursor-pointer shadow-sm hover:shadow" 
+                : "hover:bg-[#e0e0e0] active:bg-[#d5d5d5] cursor-pointer";
+
     return (
         <button 
+            type="button"
             onClick={onClick} 
-            className={`${baseClasses} ${variantClasses[variant]} ${isLoading ? 'opacity-75 cursor-not-allowed' : ''}`}
-            disabled={isLoading}
+            className={`${baseClasses} ${variantClasses[variant]} ${stateClasses}`}
+            disabled={isButtonDisabled}
         >
-            {isLoading ? <Loader2 className="animate-spin h-6 w-6" /> : <p className="text-lg md:text-xl">{children}</p>}
+            <p className="text-lg md:text-xl">{children}</p>
         </button>
     );
 }
 
-//Button divider component
+// Divider component
 function Divider() {
   return (
     <div className="flex gap-4 h-[25px] items-center justify-center w-full">
@@ -137,7 +148,7 @@ function Divider() {
   );
 }
 
-//Component for the password requirements list
+// Password requirements component
 function PasswordRequirements({ password }: { password: string }) {
     const requirements = [
         { text: "At least 8 characters", regex: /.{8,}/ },
@@ -148,7 +159,7 @@ function PasswordRequirements({ password }: { password: string }) {
     ];
 
     return (
-        <div className="p-3 bg-gray-50 rounded-md border border-gray-200 mt-2 space-y-1">
+        <div className="p-3 bg-gray-50 rounded-md border border-gray-200 mt-2 space-y-1 animate-in fade-in slide-in-from-top-1 duration-200">
             <p className="text-sm font-medium text-gray-700">Password must contain:</p>
             <ul className="text-xs text-gray-600 space-y-1">
                 {requirements.map(req => {
@@ -166,7 +177,7 @@ function PasswordRequirements({ password }: { password: string }) {
 }
 
 
-// Main Register Frame Component
+// --- Main Register Frame Component ---
 export default function FrameRegister() {
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
@@ -188,10 +199,9 @@ export default function FrameRegister() {
     const adminKeyRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
-    document.title = "AIloQR - Register";
-  }, []);
+        document.title = "AIloQR - Register";
+    }, []);
 
-    //Fetch roles from backend on component mount
     useEffect(() => {
         const fetchRoles = async () => {
             try {
@@ -207,7 +217,6 @@ export default function FrameRegister() {
         fetchRoles();
     }, []);
 
-    //Password validation function
     const validatePassword = (password: string, checkRequired: boolean = false) => {
         if (!password && checkRequired) return "Password is required.";
         if (password.length > 0 || checkRequired) {
@@ -220,7 +229,6 @@ export default function FrameRegister() {
         return undefined;
     };
 
-    //Validation function for the format of the fields
     const validate = (checkAll = false) => {
         const newErrors: typeof errors = {};
         if (checkAll || touched.name) {
@@ -243,7 +251,6 @@ export default function FrameRegister() {
         return newErrors;
     };
     
-    //Re-validate on change, but only for touched fields
     useEffect(() => {
         const newErrors: typeof errors = {};
         if (touched.name && !name) newErrors.name = "Name is required.";
@@ -251,7 +258,7 @@ export default function FrameRegister() {
             if(!email) newErrors.email = "Email is required.";
             else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) newErrors.email = "Invalid email format.";
         }
-        if (touched.password && !isPasswordFocused) { //Only show password error if not focused
+        if (touched.password && !isPasswordFocused) { 
             newErrors.password = validatePassword(password, true);
         }
         if (touched.role && !role) newErrors.role = "Role is required.";
@@ -263,10 +270,9 @@ export default function FrameRegister() {
         setTouched(prev => ({ ...prev, [field]: true }));
     };
 
-    //Handle registration submission
     const handleRegister = async () => {
         setServerError("");
-        setTouched({ name: true, email: true, password: true, role: true, adminKey: true }); //Mark all as touched on submit
+        setTouched({ name: true, email: true, password: true, role: true, adminKey: true }); 
         const formErrors = validate(true);
         if (Object.keys(formErrors).length > 0) {
             setErrors(formErrors);
@@ -284,71 +290,63 @@ export default function FrameRegister() {
             });
             const data = await response.json();
             if (!response.ok) throw new Error(data.message || 'Error during registration');
-            //On successful registration, store token and role and log in
+            
             localStorage.setItem('token', data.token);
             localStorage.setItem('role', data.role);
+            
             if (data.role === 'Admin') {
-                navigate('/admin'); //Navigate to admin panel if admin
+                navigate('/admin'); 
             } else {
-                navigate('/dashboard'); //Navigate to user dashboard if not admin
+                navigate('/dashboard'); 
             }
         } catch (err: any) {
             setServerError(err.message);
-        } finally {
             setIsLoading(false);
         }
     };
     
-
-    //Navigate to login page
     const navigateToLogin = () => navigate('/login');
 
-
-    //Enter key works as submit
     const handleKeyDown = (event: React.KeyboardEvent) => {
-        if (event.key === 'Enter' && !isLoading) handleRegister();
+        // Prevent actions if loading
+        if (isLoading) return;
 
-        //Arrow key navigation between inputs
+        if (event.key === 'Enter') handleRegister();
+
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-            event.preventDefault(); //Prevent default scrolling behavior
+            event.preventDefault(); 
 
-            //Dynamic input list based on role being admin or not
             const inputs = [nameRef, emailRef, passwordRef, roleRef];
             if (role === 'Admin') {
                 inputs.push(adminKeyRef);
             }
 
-            //Find current focused element index
             const currentIndex = inputs.findIndex(ref => ref.current === document.activeElement);
 
             let nextIndex;
             if (event.key === 'ArrowDown') {
                 nextIndex = (currentIndex + 1) % inputs.length;
-            } else { //ArrowUp
+            } else { 
                 nextIndex = (currentIndex - 1 + inputs.length) % inputs.length;
             }
 
-            //Focus the next element
             inputs[nextIndex].current?.focus();
         }
     };
 
     return (
         <div className="w-11/12 max-w-xs md:max-w-md lg:max-w-lg xl:max-w-xl flex flex-col items-center gap-4 p-4" onKeyDown={handleKeyDown}>
-            {/* TITLES */}
             <div className="text-center mb-4 md:mb-6">
                 <p className="font-semibold text-3xl md:text-4xl xl:text-5xl text-black">Register</p>
                 <p className="mt-2 font-semibold text-lg md:text-xl xl:text-2xl text-gray-700">Get started with a new account</p>
             </div>
 
-            {/* SERVER ERROR MESSAGE */}
             {serverError && (
-                <div className="w-full bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md text-center mb-2">
+                <div className="w-full bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md text-center mb-2 animate-in fade-in zoom-in-95 duration-200">
                     <p>{serverError}</p>
                 </div>
             )}
             
-            {/* FORM */}
             <div className="w-full flex flex-col gap-1">
                 <div className="flex flex-col mb-2">
                     <Input ref={nameRef} value={name} onChange={setName} onBlur={() => handleBlur('name')} placeholder="Name" type="name" hasError={!!errors.name} />
@@ -391,20 +389,22 @@ export default function FrameRegister() {
                 )}
             </div>
             
-            {/* ACTION BUTTONS & LEGAL TEXT */}
             <div className="w-full flex flex-col gap-3 md:gap-4 mt-4">
+                {/* Primary button handles loading */}
                 <ActionButton onClick={handleRegister} variant="primary" isLoading={isLoading}>Register</ActionButton>
                 <Divider />
-                <ActionButton onClick={navigateToLogin} variant="secondary">Back to Login</ActionButton>
+                {/* Secondary button receives the disabled state */}
+                <ActionButton onClick={navigateToLogin} variant="secondary" disabled={isLoading}>Back to Login</ActionButton>
             </div>
+            
             <div className="mt-6 w-full text-center">
                 <p className="text-xs md:text-sm text-gray-500">
                     By clicking register, you agree to our{' '}
-                    <button type="button" className="font-medium text-black underline-offset-4 hover:underline focus:outline-none">
+                    <button type="button" disabled={isLoading} className="font-medium text-black underline-offset-4 hover:underline focus:outline-none disabled:opacity-50">
                         Terms of Service
                     </button>
                     {' '}and{' '}
-                    <button type="button" className="font-medium text-black underline-offset-4 hover:underline focus:outline-none">
+                    <button type="button" disabled={isLoading} className="font-medium text-black underline-offset-4 hover:underline focus:outline-none disabled:opacity-50">
                         Privacy Policy
                     </button>
                     .

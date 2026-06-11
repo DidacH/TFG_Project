@@ -13,21 +13,22 @@ interface LogEntry {
   area: string;
   reason: string;
 }
+
 interface UserEntry {
   name: string;
   email: string;
   role: string;
   registered_at: string;
 }
-//Data obtained from the admin dashboard API
+
+// Data obtained from the admin dashboard API
 interface AdminData {
   admin_name: string;
   last_3_logs: LogEntry[];
   last_3_users: UserEntry[];
 }
 
-
-//Action Button Component
+// Action Button Component
 interface ActionButtonProps {
     onClick: (e?: React.MouseEvent<HTMLButtonElement>) => void;
     children: React.ReactNode;
@@ -35,8 +36,9 @@ interface ActionButtonProps {
     isLoading?: boolean;
     disabled?: boolean;
     className?: string;
-    icon?: React.ElementType; //To add icons
+    icon?: React.ElementType; 
 }
+
 function ActionButton({ onClick, children, variant = 'primary', isLoading = false, disabled = false, className = '', icon: Icon }: ActionButtonProps) {
     const baseClasses = "box-border cursor-pointer flex h-[50px] items-center justify-center rounded-[8px] w-full transition-colors font-medium text-lg md:text-xl";
     const isButtonDisabled = isLoading || disabled;
@@ -60,21 +62,19 @@ function ActionButton({ onClick, children, variant = 'primary', isLoading = fals
     );
 }
 
-//Component for Section Titles
+// Component for Section Titles
 function SectionTitle({ children }: { children: React.ReactNode }) {
-    //Aligned text left for desktop layout
     return <h2 className="text-2xl md:text-3xl font-semibold text-black text-left">{children}</h2>;
 }
 
-//Admin Frame Component
+// Admin Frame Component
 export default function FrameAdmin() {
   const navigate = useNavigate();
   const [data, setData] = useState<AdminData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [loadingDots, setLoadingDots] = useState("");
-  const {socket} = useWebSocket(); //Obtain WebSocket's global instance
+  const {socket} = useWebSocket(); 
 
   useEffect(() => {
     document.title = "AIloQR - Admin Panel";
@@ -82,26 +82,17 @@ export default function FrameAdmin() {
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  //Get token from localStorage
+  // Get token from localStorage
   const getToken = () => localStorage.getItem('token');
 
-  const handleNavigation = (path: string, actionKey: string) => {
-    setActionLoading(actionKey); // Activate spinner animation
-    
-    // Small timeout to show loading effect
-    setTimeout(() => {
-        navigate(path);
-    }, 500);
-  };
-
-  //Logout handler
+  // Instant Logout handler
   const handleLogout = useCallback(() => {
     localStorage.removeItem("token");
     localStorage.removeItem("role");
     navigate("/login");
   }, [navigate]);
 
-  //Fetch admin data
+  // Fetch admin data
   const fetchAdminData = useCallback(async (isBackgroundUpdate = false) => {
     const token = getToken();
     if (!token) {
@@ -109,18 +100,17 @@ export default function FrameAdmin() {
         return;
     }
 
-    // If there's an ongoing fetch, abort it before starting a new one
     if (abortControllerRef.current) {
         abortControllerRef.current.abort();
     }
-    // Create a new AbortController for the current fetch
+    
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    // Only show loading screen if it's not a background update
     if (!isBackgroundUpdate) {
         setLoading(true);
     }
+    
     try {
         const response = await fetch(`${API_URL}/api/admin/dashboard-data`, {
             headers: { 'Authorization': `Bearer ${token}` },
@@ -158,7 +148,7 @@ export default function FrameAdmin() {
       };
   }, []);
 
-  //Hook to fetch data on mount
+  // Hook to fetch data on mount
   useEffect(() => {
     fetchAdminData(false);
   }, [fetchAdminData]);
@@ -169,10 +159,7 @@ export default function FrameAdmin() {
         let isFetching = false;
 
         const handleUpdate = async () => {
-            
-            if (isFetching) {
-                return; 
-            }
+            if (isFetching) return; 
             
             isFetching = true;
             try {
@@ -188,7 +175,6 @@ export default function FrameAdmin() {
         return () => {
             socket.off("dashboard_update", handleUpdate);
             socket.off("connect", handleUpdate);
-
         };
     }, [socket, fetchAdminData]);
 
@@ -202,8 +188,7 @@ export default function FrameAdmin() {
     return () => clearInterval(interval);
   }, [loading]);
 
-
-  //Error Render
+  // Error Render
   if (!loading && (error || !data)) {
     return (
         <div className="w-full min-h-screen flex flex-col items-center justify-center bg-gray-100 p-4">
@@ -219,26 +204,22 @@ export default function FrameAdmin() {
     );
   }
 
-  //Admin panel Render
+  // Admin panel Render
   return (
-        <div className="flex flex-col min-h-screen bg-background">
+        <div className="flex flex-col min-h-screen bg-background relative">
             {/* Header Section */}
             <div className="fixed top-0 left-0 right-0 z-40 bg-background pt-6 md:pt-8">
-                {/*Container for alignment & max-width */}
                 <div className="w-full mx-auto px-4 sm:px-6 lg:px-10">
-                    {/* Inner container for Title and Button alignment */}
                     <div className="relative flex justify-center items-center h-12 md:h-14 mb-3">
-                        {/*Profile button */}
                         <button
                             onClick={() => !loading && navigate('/profile')}
-                            disabled={loading || !!actionLoading}
-                            aria-label="User Profile"
-                            className={`absolute left-0 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-full transition-all ${loading || !!actionLoading ? 'bg-gray-200 opacity-50 cursor-not-allowed' : 'bg-[#eeeeee] hover:bg-[#e0e0e0] active:bg-[#d5d5d5]'}`}
+                            disabled={loading}
+                            title="My Profile"
+                            className={`absolute left-0 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-full transition-all ${loading ? 'bg-gray-200 opacity-50 cursor-not-allowed' : 'bg-[#eeeeee] hover:bg-[#e0e0e0] active:bg-[#d5d5d5]'}`}
                         >
                             <UserCircle className="w-6 h-6 md:w-7 md:h-7 text-black" />
                         </button>
                         
-                        {/* TOGGLE */}
                         <div className="flex bg-[#eeeeee] rounded-lg p-1 mx-auto shadow-inner">
                             <button 
                                 onClick={() => !loading && navigate('/dashboard')}
@@ -247,55 +228,53 @@ export default function FrameAdmin() {
                             >
                                 Dashboard
                             </button>
-                            <button 
-                                className="px-4 py-1.5 rounded-md bg-white shadow text-sm md:text-base font-semibold text-[#c8102e] transition-all cursor-default"
-                            >
+                            <button className="px-4 py-1.5 rounded-md bg-white shadow text-sm md:text-base font-semibold text-[#c8102e] transition-all cursor-default">
                                 Admin Panel
                             </button>
                         </div>
+
+                        {/* Botó de Log Out discret al costat dret */}
+                        <button
+                            onClick={handleLogout}
+                            disabled={loading}
+                            title="Log Out"
+                            className={`absolute right-0 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-full transition-all ${loading ? 'bg-gray-200 opacity-50 cursor-not-allowed' : 'bg-[#eeeeee] hover:bg-[#e0e0e0] active:bg-[#d5d5d5]'}`}
+                        >
+                            <LogOut className="w-5 h-5 md:w-6 md:h-6 text-black" />
+                        </button>
                     </div>
-                     {/* Separator */}
                      <div className="border-b border-[#e6e6e6]"></div>
                 </div>
             </div>
 
-            {/* Main Content Area */}
+            {/* Main Content Area - SENSE EL mt-20 PER ALINEAR-HO COM A SECURITY */}
             <div className="flex-grow w-full flex flex-col gap-10 px-4 sm:px-6 lg:px-10 pb-12 pt-8 md:pt-12">
-                {/* When loading show text with 3 point animation */}
                 {loading ? (
                     <div className="flex flex-col items-center justify-center h-[75vh] w-full">
                         <div className="relative">
-                            <p className="text-gray-500 font-medium">
-                                Loading Panel
-                            </p>
-                            
-                            <span className="absolute left-full top-0 text-gray-500 font-medium">
-                                {loadingDots}
-                            </span>
+                            <p className="text-gray-500 font-medium">Loading Panel</p>
+                            <span className="absolute left-full top-0 text-gray-500 font-medium">{loadingDots}</span>
                         </div>
                     </div>
                 ) : (
-                    <div className="w-full px-4 sm:px-6 lg:px-10 animate-in fade-in duration-500">
-
-                        {/* Welcome Title */}
+                    <div className="w-full animate-in fade-in duration-500">
+                        
                         <div className="w-full mb-10">
                             <SectionTitle>Welcome, <span className="text-[#c8102e]">{data?.admin_name}</span>!</SectionTitle>
                         </div>
 
-                        {/* Row 1 - Recent Activity */}
                         <div className="w-full mb-12">
-                            {/* Recent Logs Section */}
                             <div className="flex flex-col gap-3">
                                 <h3 className="text-xl md:text-2xl font-semibold text-gray-800 mb-4">Recent Access Logs</h3>
                                 {(data?.last_3_logs.length ?? 0) > 0 ? (
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                         {data?.last_3_logs.map((log, index) => (
-                                            <div key={`log-${index}`} className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm flex justify-between items-center">
+                                            <div key={`log-${index}`} className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm flex justify-between items-center hover:shadow-md transition-shadow">
                                                 <div className="flex-1 overflow-hidden">
                                                     <p className="font-medium text-gray-800 truncate">Area: {log.area}</p>
                                                     <p className="text-gray-600">Role: {log.role}</p>
                                                     <p className="text-gray-600">Reason: {log.reason}</p>
-                                                    <p className="text-gray-500 text-xs">{log.access_time}</p>
+                                                    <p className="text-gray-500 text-xs mt-1">{log.access_time}</p>
                                                 </div>
                                                 {log.entry_allowed ? (
                                                     <CheckCircle2 className="h-6 w-6 text-green-600 flex-shrink-0 ml-2" />
@@ -310,16 +289,15 @@ export default function FrameAdmin() {
                                 )}
                             </div>
 
-                            {/* Recent Users Section */}
                             <div className="flex flex-col gap-3 mt-10">
                                 <h3 className="text-xl md:text-2xl font-semibold text-gray-800 mb-4">Recently Registered Users</h3>
                                 {(data?.last_3_users.length ?? 0) > 0 ? (
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                         {data?.last_3_users.map((user, index) => (
-                                            <div key={`user-${index}`} className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm">
+                                            <div key={`user-${index}`} className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm hover:shadow-md transition-shadow">
                                                 <p className="font-medium text-gray-800 truncate">{user.name} ({user.role})</p>
                                                 <p className="text-gray-600 truncate">{user.email}</p>
-                                                <p className="text-gray-500 text-xs">Registered: {user.registered_at}</p>
+                                                <p className="text-gray-500 text-xs mt-1">Registered: {user.registered_at}</p>
                                             </div>
                                         ))}
                                     </div>
@@ -329,53 +307,32 @@ export default function FrameAdmin() {
                             </div>
                         </div>
 
-                        {/* # Row 2 - Actions */}
                         <div className="w-full mt-12">
                             <h3 className="text-xl md:text-2xl font-semibold text-gray-800 mb-4">Management</h3>
-                            {/* # Grid for action buttons */}
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6">
                                 <ActionButton 
-                                    onClick={() => handleNavigation('/security', 'security')}
+                                    onClick={() => navigate('/security')}
                                     variant="secondary"
                                     icon={LockKeyholeIcon}
-                                    isLoading={actionLoading === 'security'}
-                                    disabled={actionLoading !== null}
                                 >
                                     Security
                                 </ActionButton>
                                 <ActionButton 
-                                    onClick={() => handleNavigation('/users', 'users')}
+                                    onClick={() => navigate('/users')}
                                     variant="secondary" 
                                     icon={Users}
-                                    isLoading={actionLoading === 'users'}
-                                    disabled={actionLoading !== null}
                                 >
                                     Manage Users
                                 </ActionButton>
                                 <ActionButton 
-                                    onClick={() => handleNavigation('/logs', 'logs')}
+                                    onClick={() => navigate('/view-logs')}
                                     variant="secondary" 
                                     icon={FileText}
-                                    isLoading={actionLoading === 'logs'}
-                                    disabled={actionLoading !== null}
                                 >
                                     View Logs
                                 </ActionButton>
                             </div>
                         </div>       
-
-                        {/* Logout Button */}
-                        <div className="w-full max-w-xs md:max-w-sm mt-12 mx-auto">
-                            <ActionButton 
-                                onClick={handleLogout} 
-                                variant="primary" 
-                                icon={LogOut} 
-                                isLoading={actionLoading === 'logout'}
-                                disabled={actionLoading !== null}
-                            >
-                                Log Out
-                        </ActionButton>
-                        </div>
 
                     </div>
                 )}
