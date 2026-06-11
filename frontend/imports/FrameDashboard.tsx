@@ -25,12 +25,14 @@ interface ActionButtonProps {
     icon?: React.ElementType;
 }
 
+// Reusable action button component
 function ActionButton({ onClick, children, variant = 'primary', isLoading = false, className = '', icon: Icon }: ActionButtonProps) {
     const baseClasses = "box-border cursor-pointer flex h-[50px] items-center justify-center rounded-[8px] w-full transition-colors font-medium";
     const variantClasses = {
         primary: "bg-[#c8102e] hover:bg-[#b00f29] active:bg-[#a00d25] text-white",
         secondary: "bg-[#eeeeee] hover:bg-[#e0e0e0] active:bg-[#d5d5d5] text-black"
     };
+
     return (
         <button 
             onClick={onClick} 
@@ -53,23 +55,26 @@ export default function FrameDashboard() {
   const [loading, setLoading] = useState(true);
   const [loadingDots, setLoadingDots] = useState("");
   const [error, setError] = useState<string | null>(null);
+  
+  // QR lifecycle state
   const [remainingTime, setRemainingTime] = useState(QR_REFRESH_INTERVAL);
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false); 
+  
+  // Refs for tracking background intervals and stale requests
   const isRefreshingRef = useRef(false); 
   const expirationTimeRef = useRef<number | null>(null); 
-  const { socket } = useWebSocket();
+  const abortControllerRef = useRef<AbortController | null>(null);
   const userIdRef = useRef<string | undefined>(data?.id);
-
-  // We get the role from localStorage to prevent the header flicker
+  
+  const { socket } = useWebSocket();
   const storedRole = localStorage.getItem('role');
 
   useEffect(() => {
     document.title = "AIloQR - Dashboard";
   }, []);
 
-  const abortControllerRef = useRef<AbortController | null>(null);
-
+  // Loading animation effect
   useEffect(() => {
     if (!loading) return;
     const interval = setInterval(() => {
@@ -77,6 +82,17 @@ export default function FrameDashboard() {
     }, 400);
     return () => clearInterval(interval);
   }, [loading]);
+
+  // Cleanup pending network requests on unmount
+  useEffect(() => {
+      return () => {
+          if (abortControllerRef.current) {
+              abortControllerRef.current.abort();
+          }
+      };
+  }, []);
+
+  useEffect(() => { userIdRef.current = data?.id; }, [data?.id]);
 
   const getToken = () => localStorage.getItem('token');
 
@@ -86,6 +102,7 @@ export default function FrameDashboard() {
     navigate("/login");
   }, [navigate]);
 
+  // Fetches fresh QR data from the server
   const refreshQr = useCallback(async (isInitialLoad: boolean = false, fetchOnly: boolean = false) => {
     if (!getToken()) { handleLogout(); return; }
     if (isRefreshingRef.current && !isInitialLoad && !fetchOnly) return; 
@@ -125,10 +142,7 @@ export default function FrameDashboard() {
             expirationTimeRef.current = Date.now() + (QR_REFRESH_INTERVAL * 1000);
         }
     } catch (err: any) {
-        if (err.name === 'AbortError') {
-            console.log('Dashboard fetch aborted due to fast navigation');
-            return;
-        }
+        if (err.name === 'AbortError') return;
         setError(err.message);
     } finally {
         if (abortControllerRef.current === controller) {
@@ -139,16 +153,7 @@ export default function FrameDashboard() {
     }
   }, [handleLogout]);
 
-  useEffect(() => {
-      return () => {
-          if (abortControllerRef.current) {
-              abortControllerRef.current.abort();
-          }
-      };
-  }, []);
-
-  useEffect(() => { userIdRef.current = data?.id; }, [data?.id]);
-
+  // Countdown timer for QR validity
   useEffect(() => {
     if (loading || error || !data || isRefreshing) return; 
     const timer = setInterval(() => {
@@ -161,6 +166,7 @@ export default function FrameDashboard() {
     return () => clearInterval(timer); 
   }, [loading, error, data, isRefreshing, refreshQr]);
 
+  // WebSocket listeners for real-time dashboard updates
   useEffect(() => {
         if (!socket) return;
         const handleUpdateData = (eventData?: any) => {
@@ -168,6 +174,7 @@ export default function FrameDashboard() {
         };
         socket.on("dashboard_update", handleUpdateData);
         socket.on("connect", () => handleUpdateData());
+        
         return () => {
             socket.off("dashboard_update", handleUpdateData);
             socket.off("connect", handleUpdateData);
@@ -189,19 +196,22 @@ export default function FrameDashboard() {
 
   return (
         <div className="flex flex-col min-h-screen bg-background">
-            {/* Header Section - Always visible */}
+            
+            {/* Header Section */}
             <div className="fixed top-0 left-0 right-0 z-40 bg-background pt-6 md:pt-8">
                 <div className="w-full mx-auto px-4 sm:px-6 lg:px-10">
                     <div className="relative flex justify-center items-center h-12 md:h-14 mb-3">
                         <button 
                             onClick={() => !loading && navigate('/profile')} 
                             disabled={loading}
-                            className={`absolute left-0 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-full transition-all ${loading ? 'bg-gray-200 opacity-50 cursor-not-allowed' : 'bg-[#eeeeee] hover:bg-[#e0e0e0]'}`}
+                            className={cn(
+                                "absolute left-0 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-full transition-all",
+                                loading ? 'bg-gray-200 opacity-50 cursor-not-allowed' : 'bg-[#eeeeee] hover:bg-[#e0e0e0]'
+                            )}
                         >
                             <UserCircle className="w-6 h-6 md:w-7 md:h-7 text-black" />
                         </button>
                         
-                        {/* Persistent toggle based on data or storedRole */}
                         {(data?.role === 'Admin' || storedRole === 'Admin') ? (
                             <div className="flex bg-[#eeeeee] rounded-lg p-1 mx-auto shadow-inner">
                                 <button className="px-4 py-1.5 rounded-md bg-white shadow text-sm md:text-base font-semibold text-[#c8102e] cursor-default">
@@ -210,7 +220,10 @@ export default function FrameDashboard() {
                                 <button 
                                     onClick={() => !loading && navigate('/admin')} 
                                     disabled={loading}
-                                    className={`px-4 py-1.5 rounded-md text-sm md:text-base font-medium transition-all ${loading ? 'opacity-50 cursor-not-allowed text-gray-400' : 'text-gray-600 hover:text-black'}`}
+                                    className={cn(
+                                        "px-4 py-1.5 rounded-md text-sm md:text-base font-medium transition-all",
+                                        loading ? 'opacity-50 cursor-not-allowed text-gray-400' : 'text-gray-600 hover:text-black'
+                                    )}
                                 >
                                     Admin Panel
                                 </button>
@@ -237,20 +250,23 @@ export default function FrameDashboard() {
                         <h2 className="text-2xl md:text-3xl font-semibold text-black text-center mt-4 md:mt-6">
                             Welcome, <span className="text-[#c8102e]">{data?.name}</span>!
                         </h2>
+                        
                         <div className="w-full flex flex-col items-center gap-4">
                             <h3 className="text-xl md:text-2xl font-semibold text-gray-800">Your QR Code</h3>
-                            <img src={`data:image/png;base64,${data?.qr_base64}`} alt="QR" className="w-[220px] h-[220px] md:w-[250px] md:h-[250px] border-4 border-gray-200 rounded-lg p-1 shadow-sm bg-white" />
+                            <img src={`data:image/png;base64,${data?.qr_base64}`} alt="Access QR Code" className="w-[220px] h-[220px] md:w-[250px] md:h-[250px] border-4 border-gray-200 rounded-lg p-1 shadow-sm bg-white" />
                             <div className="flex flex-col items-center gap-2 pt-2">
                                 <p className="text-base md:text-lg font-medium">Refreshes in <span className="font-bold text-[#c8102e]">{remainingTime}</span> s</p>
-                                <button onClick={async () => {setIsManualRefreshing(true); await refreshQr(); setIsManualRefreshing(false);}} className="text-sm text-gray-600 flex items-center gap-1">
+                                <button onClick={async () => {setIsManualRefreshing(true); await refreshQr(); setIsManualRefreshing(false);}} className="text-sm text-gray-600 flex items-center gap-1 transition-opacity hover:opacity-70">
                                     <RefreshCw size={16} className={isManualRefreshing ? "animate-spin" : ""} /> Manual Refresh
                                 </button>
                             </div>
                         </div>
+
                         <div className="w-full text-center mt-4 md:mt-2">
                             <h4 className="text-lg font-semibold text-gray-800 mb-1">Last Access</h4>
                             <p className="text-base text-[#828282]">{data?.last_access || "No access recorded yet."}</p>
                         </div>
+
                         <div className="w-full max-w-xs md:max-w-sm mt-6">
                           <ActionButton onClick={handleLogout} variant="primary" icon={LogOut}>Log Out</ActionButton>
                         </div>

@@ -6,6 +6,7 @@ import { useWebSocket } from "../context/WebSocketContext";
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
+// --- Interfaces ---
 interface LogEntry {
   role: string;
   access_time: string;
@@ -37,6 +38,7 @@ interface ActionButtonProps {
     icon?: React.ElementType; 
 }
 
+// Reusable action button component
 function ActionButton({ onClick, children, variant = 'primary', isLoading = false, disabled = false, className = '', icon: Icon }: ActionButtonProps) {
     const baseClasses = "box-border cursor-pointer flex h-[50px] items-center justify-center rounded-[8px] w-full transition-colors font-medium text-lg md:text-xl";
     const isButtonDisabled = isLoading || disabled;
@@ -44,6 +46,7 @@ function ActionButton({ onClick, children, variant = 'primary', isLoading = fals
         primary: "bg-[#c8102e] hover:bg-[#b00f29] active:bg-[#a00d25] text-white shadow-lg hover:shadow-xl",
         secondary: "bg-[#eeeeee] hover:bg-[#e0e0e0] active:bg-[#d5d5d5] text-black shadow-md hover:shadow-lg"
     };
+
     return (
         <button 
             onClick={onClick} 
@@ -70,12 +73,24 @@ export default function FrameAdmin() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loadingDots, setLoadingDots] = useState("");
-  const {socket} = useWebSocket(); 
+  
+  const { socket } = useWebSocket(); 
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const getToken = () => localStorage.getItem('token');
 
   useEffect(() => { document.title = "AIloQR - Admin Panel"; }, []);
 
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const getToken = () => localStorage.getItem('token');
+  // Cleanup pending network requests on unmount
+  useEffect(() => {
+      return () => { if (abortControllerRef.current) abortControllerRef.current.abort(); };
+  }, []);
+
+  // Loading animation effect
+  useEffect(() => {
+    if (!loading) return;
+    const interval = setInterval(() => { setLoadingDots((prev) => (prev.length >= 3 ? "" : prev + ".")); }, 400);
+    return () => clearInterval(interval);
+  }, [loading]);
 
   const handleLogout = useCallback(() => {
     localStorage.removeItem("token");
@@ -86,8 +101,8 @@ export default function FrameAdmin() {
   const fetchAdminData = useCallback(async (isBackgroundUpdate = false) => {
     const token = getToken();
     if (!token) { handleLogout(); return; }
-    if (abortControllerRef.current) abortControllerRef.current.abort();
     
+    if (abortControllerRef.current) abortControllerRef.current.abort();
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
@@ -114,15 +129,13 @@ export default function FrameAdmin() {
     }
   }, [handleLogout]);
 
-  useEffect(() => {
-      return () => { if (abortControllerRef.current) abortControllerRef.current.abort(); };
-  }, []);
-
   useEffect(() => { fetchAdminData(false); }, [fetchAdminData]);
 
+  // WebSocket event listeners for real-time dashboard updates
   useEffect(() => {
         if (!socket) return;
         let isFetching = false;
+
         const handleUpdate = async () => {
             if (isFetching) return; 
             isFetching = true;
@@ -131,17 +144,12 @@ export default function FrameAdmin() {
 
         socket.on("dashboard_update", handleUpdate);
         socket.on("connect", handleUpdate);
+        
         return () => {
             socket.off("dashboard_update", handleUpdate);
             socket.off("connect", handleUpdate);
         };
     }, [socket, fetchAdminData]);
-
-  useEffect(() => {
-    if (!loading) return;
-    const interval = setInterval(() => { setLoadingDots((prev) => (prev.length >= 3 ? "" : prev + ".")); }, 400);
-    return () => clearInterval(interval);
-  }, [loading]);
 
   if (!loading && (error || !data)) {
     return (
@@ -157,19 +165,26 @@ export default function FrameAdmin() {
   }
 
   return (
-        // ESTRUCTURA FIXED UNIFICADA
         <div className="fixed inset-0 flex flex-col w-full bg-background overflow-hidden">
             
-            {/* Header Fixat */}
+            {/* Header Section (Sense animació) */}
             <div className="shrink-0 bg-background pt-6 md:pt-8 w-full z-40">
                 <div className="w-full mx-auto px-4 sm:px-6 lg:px-10">
                     <div className="relative flex justify-center items-center h-12 md:h-14 mb-3">
-                        <button onClick={() => !loading && navigate('/profile')} disabled={loading} className={cn("absolute left-0 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-full transition-colors", loading ? 'bg-gray-200 opacity-50 cursor-not-allowed' : 'bg-[#eeeeee] hover:bg-[#e0e0e0]')}>
+                        <button 
+                            onClick={() => !loading && navigate('/profile')} 
+                            disabled={loading} 
+                            className={cn("absolute left-0 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-full transition-colors", loading ? 'bg-gray-200 opacity-50 cursor-not-allowed' : 'bg-[#eeeeee] hover:bg-[#e0e0e0]')}
+                        >
                             <UserCircle className="w-6 h-6 md:w-7 md:h-7 text-black" />
                         </button>
                         
                         <div className="flex bg-[#eeeeee] rounded-lg p-1 mx-auto shadow-inner">
-                            <button onClick={() => !loading && navigate('/dashboard')} disabled={loading} className={cn("px-4 py-1.5 rounded-md text-sm md:text-base font-medium transition-all", loading ? 'opacity-50 cursor-not-allowed text-gray-400' : 'text-gray-600 hover:text-black')}>
+                            <button 
+                                onClick={() => !loading && navigate('/dashboard')} 
+                                disabled={loading} 
+                                className={cn("px-4 py-1.5 rounded-md text-sm md:text-base font-medium transition-all", loading ? 'opacity-50 cursor-not-allowed text-gray-400' : 'text-gray-600 hover:text-black')}
+                            >
                                 Dashboard
                             </button>
                             <button className="px-4 py-1.5 rounded-md bg-white shadow text-sm md:text-base font-semibold text-[#c8102e] transition-all cursor-default">
@@ -177,7 +192,11 @@ export default function FrameAdmin() {
                             </button>
                         </div>
 
-                        <button onClick={handleLogout} disabled={loading} className={cn("absolute right-0 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-full transition-colors", loading ? 'bg-gray-200 opacity-50 cursor-not-allowed' : 'bg-[#eeeeee] hover:bg-[#e0e0e0]')}>
+                        <button 
+                            onClick={handleLogout} 
+                            disabled={loading} 
+                            className={cn("absolute right-0 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-full transition-colors", loading ? 'bg-gray-200 opacity-50 cursor-not-allowed' : 'bg-[#eeeeee] hover:bg-[#e0e0e0]')}
+                        >
                             <LogOut className="w-5 h-5 md:w-6 md:h-6 text-black" />
                         </button>
                     </div>
@@ -185,7 +204,7 @@ export default function FrameAdmin() {
                 </div>
             </div>
 
-            {/* Contingut Scrollable amb l'animació "slide-in-from-bottom" */}
+            {/* Main Content Area */}
             <div className="flex-1 min-h-0 w-full flex flex-col gap-10 px-4 sm:px-6 lg:px-10 pb-12 pt-6 overflow-y-auto">
                 {loading ? (
                     <div className="flex flex-col items-center justify-center h-full w-full">
