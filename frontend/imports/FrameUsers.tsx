@@ -236,7 +236,7 @@ export default function FrameUsers() {
                 </div>
             </div>
 
-            <div className="flex-1 min-h-0 w-full flex flex-col gap-4 px-4 sm:px-6 lg:px-10 pb-6 pt-4">
+            <div className="flex-1 min-h-0 w-full flex flex-col gap-4 px-4 sm:px-6 lg:px-10 pb-6 pt-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 
                 <div className="shrink-0 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
                     <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
@@ -276,7 +276,7 @@ export default function FrameUsers() {
                     ) : error ? (
                         <div className="text-red-500 text-center p-10 font-medium">{error}</div>
                     ) : (
-                        <table className="w-full text-left border-collapse min-w-[950px] table-fixed">
+                        <table className="w-full text-left border-collapse min-w-[950px] table-fixed animate-in fade-in slide-in-from-bottom-4 duration-500">
                             <thead className="bg-[#c8102e] text-white sticky top-0 z-10 shadow-[0_1px_0_#e5e7eb]">
                                 <tr>
                                     <th className="p-4 font-semibold w-[15%]">User ID</th>

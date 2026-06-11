@@ -48,7 +48,7 @@ export default function LogTable({
                     <Loader2 className="w-10 h-10 animate-spin text-[#c8102e]" />
                 </div>
             ) : logs.length > 0 ? (
-                <table className="w-full text-left border-collapse min-w-[800px] table-fixed">
+                <table className="w-full text-left border-collapse min-w-[950px] table-fixed animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <thead className="bg-[#c8102e] text-white sticky top-0 z-10 shadow-[0_1px_0_#e5e7eb]">
                         <tr>
                             {/* Adjusted column widths dynamically based on isAdmin to maximize space for Reason */}

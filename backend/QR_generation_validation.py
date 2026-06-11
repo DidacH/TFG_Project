@@ -44,15 +44,21 @@ def load_rules_from_db():
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # Load Access Rules
-        cur.execute("SELECT role, allowed_area FROM access_rules")
+        cur.execute("SELECT role, allowed_area, allowed_days, start_time, end_time, is_active FROM access_rules")
         rules = cur.fetchall()
         
         temp_rules = {}
-        for role, area in rules:
+        for role, area, days, start_time, end_time, is_active in rules:
             if role not in temp_rules:
                 temp_rules[role] = []
-            temp_rules[role].append(area)
+            
+            temp_rules[role].append({
+                'area': area,
+                'days': [int(d) for d in days.split(',')] if days else [],
+                'start_time': start_time,
+                'end_time': end_time,     # objecte datetime.time
+                'is_active': is_active
+            })
             
         
         # Load System Config (e.g., closed hours, lockdown status)
@@ -185,20 +191,45 @@ def verify_qr(content, secret_key, target_area):
     
     # Check role permissions
     load_rules_from_db()
-    allowed_areas = _RULES_CACHE.get(role, [])
+    role_rules = _RULES_CACHE.get(role, [])
+    
+    current_weekday = current_dt.weekday() # 0 = Monday, 6 = Sunday
+    current_time_only = current_dt.time()
     
     has_access = False
-    if 'ALL' in allowed_areas:
-        has_access = True
-    elif target_area in allowed_areas:
-        has_access = True
+    
+    # Evaluate all rules for the user's role. If any rule grants access, we allow it (logical OR).
+    for rule in role_rules:
+        # Skip rule if deactivated
+        if not rule.get('is_active', True):
+            continue
+            
+        # Has area permission? (either specific area or ALL)
+        area_match = (rule['area'] == 'ALL' or rule['area'] == target_area)
+        
+        # Are we on an allowed day?
+        day_match = (current_weekday in rule['days'])
+        
+        # Are we within allowed time range?
+        time_match = (rule['start_time'] <= current_time_only <= rule['end_time'])
+        
+        if area_match and day_match and time_match:
+            has_access = True
+            break
 
     if not has_access:
-        return {'valid': False, 'error_code': 'AREA_VIOLATION',  'reason': f'Role {role} does not have access to {target_area}', 'user_id': user_id, 'role': role, 'access_time': time_str}
+        return {
+            'valid': False, 
+            'error_code': 'AREA_VIOLATION',  
+            'reason': f'Access denied for {role} at {target_area} (Check schedules/permissions)', 
+            'user_id': user_id, 
+            'role': role, 
+            'access_time': time_str
+        }
 
-    # Check Global Time (Facility Closed Hours)
+    # Check Global Time (Facility Closed Hours) (specifically closed hours to avoid having to restrict by role)
     # Exception: Admins can access anytime
-    if current_dt.hour in _CONFIG_CACHE and role != 'Admin':
+    if current_dt.hour in _CONFIG_CACHE.get('closed_hours', []) and role != 'Admin':
         return {'valid': False, 'error_code': 'TIME_VIOLATION',  'reason': 'Facilities closed', 'user_id': user_id, 'role': role, 'access_time': time_str}
 
     return {

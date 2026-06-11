@@ -25,15 +25,24 @@ model = None
 scaler = None
 label_encoders = {}
 FEATURE_COLUMNS = ['role_encoded', 'area_encoded', 'hour', 'weekday', 'is_admin', 'time_since_last_access', 'access_frequency_1h']
-raw_threshold = os.getenv("ANOMALY_THRESHOLD", "-0.15") # Threshold for flagging anomalies
 
-try:
-    # Convert to float
-    ANOMALY_THRESHOLD = float(raw_threshold)
-    print(f"Anomaly threshold set to {ANOMALY_THRESHOLD}")
-except ValueError:
-    print(f"⚠️ Error: The value '{raw_threshold}' in .env isn't valid. Using -0.15 default threshold.")
-    ANOMALY_THRESHOLD = -0.15
+
+def get_anomaly_threshold():
+    """Fetches the current AI threshold from the database in real-time."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT value_data FROM system_config WHERE key_name = 'anomaly_threshold'")
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        if row:
+            return float(row[0])
+    except Exception as e:
+        print(f"Error fetching threshold from DB, using fallback: {e}")
+    
+    return -0.025 # Security fallback threshold if DB access fails
+
 
 def save_model_artifacts():
     """Save the model, scaler, and encoders to file."""
@@ -158,7 +167,8 @@ def predict_anomaly(log_entry, provided_features=None):
     X_predict = log_processed[FEATURE_COLUMNS]
 
     score = model.decision_function(X_predict)[0]
-    is_anomaly = score < ANOMALY_THRESHOLD
+    threshold = get_anomaly_threshold()
+    is_anomaly = score < threshold
 
     # --- EXPLAINABLE AI (XAI) LOGIC ---
     explanation = None

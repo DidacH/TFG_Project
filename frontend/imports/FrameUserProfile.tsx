@@ -92,7 +92,7 @@ export default function FrameUserProfile() {
                 ) : (
                     <>
                         {/* User Details Card */}
-                        <div className="shrink-0 bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6 animate-in fade-in duration-300">
+                        <div className="shrink-0 bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6 animate-in fade-in duration-500">
                             <div className="flex items-center gap-5">
                                 <div className="hidden md:flex h-16 w-16 bg-gray-100 rounded-full items-center justify-center border border-gray-200">
                                     <UserCircle className="h-8 w-8 text-gray-400" />

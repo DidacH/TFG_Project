@@ -107,13 +107,28 @@ def init_access_rules_table():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
+        # Crear taula si no existeix amb les noves columnes
         cur.execute('''
             CREATE TABLE IF NOT EXISTS access_rules (
                 id SERIAL PRIMARY KEY,
                 role VARCHAR(50) NOT NULL,
-                allowed_area VARCHAR(100) NOT NULL
+                allowed_area VARCHAR(100) NOT NULL,
+                allowed_days VARCHAR(50) DEFAULT '0,1,2,3,4,5,6',
+                start_time TIME DEFAULT '00:00:00',
+                end_time TIME DEFAULT '23:59:59',
+                is_active BOOLEAN DEFAULT TRUE
             );
         ''')
+        
+        # MIGRACIÓ SEGURA: Afegir columnes si la taula ja existia d'abans
+        try:
+            cur.execute("ALTER TABLE access_rules ADD COLUMN IF NOT EXISTS allowed_days VARCHAR(50) DEFAULT '0,1,2,3,4,5,6'")
+            cur.execute("ALTER TABLE access_rules ADD COLUMN IF NOT EXISTS start_time TIME DEFAULT '00:00:00'")
+            cur.execute("ALTER TABLE access_rules ADD COLUMN IF NOT EXISTS end_time TIME DEFAULT '23:59:59'")
+            cur.execute("ALTER TABLE access_rules ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE")
+        except Exception as alt_e:
+            print(f"Alter table ignored (columns might already exist): {alt_e}")
+
         conn.commit()
     except Exception as e:
         if conn: conn.rollback()
@@ -129,22 +144,18 @@ def insert_initial_access_rules():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        # Example rules
-        cur.execute('''
-            INSERT INTO access_rules (role, allowed_area) VALUES 
-            ('Student', 'Classroom_1'),
-            ('Student', 'Library'),
-            ('Student', 'Lab_A'),
-            ('Professor', 'Classroom_1'),
-            ('Professor', 'Library'),
-            ('Professor', 'Lab_A'),
-            ('Professor', 'Office_1'),
-            ('Staff', 'Office_1'),
-            ('Staff', 'Server_Room'),
-            ('Staff', 'Lab_A'),
-            ('Admin', 'ALL');
-        ''')
-        conn.commit()
+        # Check if there are already rules to avoid duplicates
+        cur.execute("SELECT COUNT(*) FROM access_rules")
+        # Insert default rules only if table is empty
+        if cur.fetchone()[0] == 0:
+            cur.execute('''
+                INSERT INTO access_rules (role, allowed_area, allowed_days, start_time, end_time, is_active) VALUES 
+                ('Student', 'Classroom_1', '0,1,2,3,4', '08:00:00', '20:00:00', TRUE),
+                ('Student', 'Library', '0,1,2,3,4,5', '08:00:00', '21:00:00', TRUE),
+                ('Professor', 'Classroom_1', '0,1,2,3,4,5', '07:00:00', '22:00:00', TRUE),
+                ('Admin', 'ALL', '0,1,2,3,4,5,6', '00:00:00', '23:59:59', TRUE);
+            ''')
+            conn.commit()
     except Exception as e:
         if conn: conn.rollback()
         print(f"Error in insert_initial_access_rules: {e}")
@@ -183,7 +194,8 @@ def insert_default_system_config():
         cur.execute('''
             INSERT INTO system_config (key_name, value_data) VALUES 
             ('system_lockdown', 'FALSE'),
-            ('closed_hours', '23,0,1,2,3,4,5,6')
+            ('closed_hours', '23,0,1,2,3,4,5,6'),
+            ('anomaly_threshold', '-0.025')
             ON CONFLICT (key_name) DO NOTHING;
         ''')
         conn.commit()
@@ -394,6 +406,21 @@ def show_all_user_states():
         if cur: cur.close()
         if conn: conn.close()
 
+def print_access_rules():
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('SELECT * FROM access_rules')
+        rules = cur.fetchall()
+        for rule in rules:
+            print(f"ID: {rule['id']}, Role: {rule['role']}, Area: {rule['allowed_area']}, Days: {rule['allowed_days']}, Time: {rule['start_time']} - {rule['end_time']}, Active: {rule['is_active']}")
+    except Exception as e:
+        print(f"Error in print_access_rules: {e}")
+    finally:
+        if cur: cur.close()
+        if conn: conn.close()
 
 if __name__ == "__main__":
     #delete_tables()  #Use with caution - deletes all data
@@ -408,4 +435,6 @@ if __name__ == "__main__":
     # insert_default_system_config()
     # init_alert_rules_table()
 
-    show_all_user_states()
+    print_access_rules()
+
+    #show_all_user_states()

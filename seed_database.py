@@ -75,31 +75,36 @@ def seed_data():
             print(f"      - Creat: {email} ({role})")
 
         # ACCESS RULES DEFINITION
-        print("   🛡️  Configurant regles d'accés...")
+        # Nou format: (role, allowed_area, allowed_days, start_time, end_time, is_active)
+        print("   🛡️  Configurant regles d'accés amb horaris...")
         rules = [
-            ('Student', 'Classroom_1'),
-            ('Student', 'Library'),
-            ('Student', 'Lab_A'),
-            ('Professor', 'Classroom_1'),
-            ('Professor', 'Library'),
-            ('Professor', 'Lab_A'),
-            ('Professor', 'Office_1'),
-            ('Staff', 'Office_1'),
-            ('Staff', 'Server_Room'),
-            ('Staff', 'Lab_A'),
-            ('Admin', 'ALL') # Master access
+            ('Student', 'Classroom_1', '0,1,2,3,4', '08:00:00', '20:00:00', True),
+            ('Student', 'Library', '0,1,2,3,4,5', '08:00:00', '21:00:00', True),
+            ('Student', 'Lab_A', '0,1,2,3,4', '09:00:00', '18:00:00', True),
+            
+            ('Professor', 'Classroom_1', '0,1,2,3,4,5', '07:00:00', '22:00:00', True),
+            ('Professor', 'Library', '0,1,2,3,4,5', '07:00:00', '22:00:00', True),
+            ('Professor', 'Lab_A', '0,1,2,3,4,5', '07:00:00', '22:00:00', True),
+            ('Professor', 'Office_1', '0,1,2,3,4,5,6', '06:00:00', '23:00:00', True),
+            
+            ('Staff', 'Office_1', '0,1,2,3,4,5', '08:00:00', '18:00:00', True),
+            ('Staff', 'Server_Room', '0,1,2,3,4,5,6', '00:00:00', '23:59:59', True),
+            ('Staff', 'Lab_A', '0,1,2,3,4,5', '08:00:00', '18:00:00', True),
+            
+            ('Admin', 'ALL', '0,1,2,3,4,5,6', '00:00:00', '23:59:59', True) # Master access
         ]
 
         cur.executemany(
-            "INSERT INTO access_rules (role, allowed_area) VALUES (%s, %s)",
+            "INSERT INTO access_rules (role, allowed_area, allowed_days, start_time, end_time, is_active) VALUES (%s, %s, %s, %s, %s, %s)",
             rules
         )
 
         # SYSTEM CONFIGURATIONS
-        print("   ⚙️  Establint configuració global...")
+        print("   ⚙️  Establint configuració global (incloent IA Threshold)...")
         configs = [
             ('closed_hours', '23,0,1,2,3,4,5,6'), # Closed from 11 PM to 7 AM
-            ('maintenance_mode', 'false')
+            ('system_lockdown', 'false'),
+            ('anomaly_threshold', '-0.025') # Valor de la IA traslladat del .env
         ]
 
         cur.executemany(

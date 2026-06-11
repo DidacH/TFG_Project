@@ -233,7 +233,7 @@ export default function FrameDashboard() {
                         </div>
                     </div>
                 ) : (
-                    <div className="w-full flex flex-col items-center gap-6 md:gap-8 animate-in fade-in duration-500">
+                    <div className="w-full flex flex-col items-center gap-6 md:gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         <h2 className="text-2xl md:text-3xl font-semibold text-black text-center mt-4 md:mt-6">
                             Welcome, <span className="text-[#c8102e]">{data?.name}</span>!
                         </h2>

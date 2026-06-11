@@ -2,26 +2,10 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWebSocket } from "../context/WebSocketContext";
 import { 
-  Loader2, 
-  UserCircle, 
-  ArrowLeft, 
-  ShieldAlert, 
-  ShieldCheck, 
-  Lock,
-  Unlock,
-  AlertTriangle, 
-  Activity,
-  Search,
-  CheckCircle,
-  Sparkles,
-  FileCheck,
-  X
+  Loader2, UserCircle, ArrowLeft, ShieldAlert, ShieldCheck, Lock,
+  Unlock, AlertTriangle, Activity, Search, CheckCircle, Sparkles, FileCheck
 } from "lucide-react";
-
-// --- Utility for classes ---
-function cn(...classes: (string | undefined | null | false)[]) {
-  return classes.filter(Boolean).join(" ");
-}
+import { cn } from "../components/ui/utils";
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -53,7 +37,6 @@ interface SecurityData {
 }
 
 // --- Helper Components ---
-
 interface ActionButtonProps {
     onClick: (e?: React.MouseEvent<HTMLButtonElement>) => void;
     children: React.ReactNode;
@@ -71,18 +54,11 @@ function ActionButton({ onClick, children, variant = 'primary', isLoading = fals
         secondary: "bg-[#eeeeee] hover:bg-[#e0e0e0] active:bg-[#d5d5d5] text-black shadow-md hover:shadow-lg",
         danger: "bg-red-600 hover:bg-red-700 text-white shadow-lg hover:shadow-xl" 
     };
-    
     const isButtonDisabled = isLoading || disabled;
-
     return (
         <button 
             onClick={onClick} 
-            className={cn(
-                baseClasses, 
-                variantClasses[variant], 
-                isButtonDisabled ? 'opacity-75 cursor-not-allowed animate-none' : '', 
-                className
-            )}
+            className={cn(baseClasses, variantClasses[variant], isButtonDisabled ? 'opacity-75 cursor-not-allowed animate-none' : '', className)}
             disabled={isButtonDisabled}
         >
             {isLoading ? <Loader2 className="animate-spin h-6 w-6" /> : (
@@ -99,61 +75,30 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
     return <h2 className="text-2xl md:text-3xl font-semibold text-black text-left">{children}</h2>;
 }
 
-// --- Custom Confirmation Modal for System Lockdown ---
-interface LockdownModalProps {
-    isOpen: boolean;
-    onClose: () => void;
-    onConfirm: () => void;
-    isLockingDown: boolean;
-    isLoading: boolean;
-}
-
-function LockdownModal({ isOpen, onClose, onConfirm, isLockingDown, isLoading }: LockdownModalProps) {
+function LockdownModal({ isOpen, onClose, onConfirm, isLockingDown, isLoading }: any) {
     if (!isOpen) return null;
-
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
-                
-                {/* Header */}
                 <div className={cn("p-6 flex items-center gap-4", isLockingDown ? "bg-red-50" : "bg-gray-50")}>
                     <div className={cn("p-3 rounded-full", isLockingDown ? "bg-red-100 text-red-600" : "bg-gray-200 text-gray-700")}>
                         {isLockingDown ? <ShieldAlert className="w-8 h-8" /> : <Unlock className="w-8 h-8" />}
                     </div>
                     <div>
-                        <h3 className="text-xl font-bold text-gray-900">
-                            {isLockingDown ? "System Lockdown" : "Unlock System"}
-                        </h3>
+                        <h3 className="text-xl font-bold text-gray-900">{isLockingDown ? "System Lockdown" : "Unlock System"}</h3>
                         <p className="text-sm text-gray-500 font-medium">Critical Security Action</p>
                     </div>
                 </div>
-
-                {/* Body */}
                 <div className="p-6">
                     <p className="text-gray-700 text-base">
                         {isLockingDown 
-                            ? "Are you sure you want to initiate a SYSTEM LOCKDOWN? All standard user access will be immediately suspended across all areas."
-                            : "Are you sure you want to UNLOCK the system? Normal access rules will be restored for all users."}
+                            ? "Are you sure you want to initiate a SYSTEM LOCKDOWN? All standard user access will be immediately suspended."
+                            : "Are you sure you want to UNLOCK the system? Normal access rules will be restored."}
                     </p>
                 </div>
-
-                {/* Footer / Actions */}
                 <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
-                    <button 
-                        onClick={onClose} 
-                        disabled={isLoading}
-                        className="px-4 py-2 font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
-                    >
-                        Cancel
-                    </button>
-                    <button 
-                        onClick={onConfirm}
-                        disabled={isLoading}
-                        className={cn(
-                            "px-5 py-2 font-medium text-white rounded-lg transition-colors flex items-center justify-center gap-2 shadow-sm disabled:opacity-50",
-                            isLockingDown ? "bg-red-600 hover:bg-red-700" : "bg-gray-800 hover:bg-gray-900"
-                        )}
-                    >
+                    <button onClick={onClose} disabled={isLoading} className="px-4 py-2 font-medium text-gray-600 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50">Cancel</button>
+                    <button onClick={onConfirm} disabled={isLoading} className={cn("px-5 py-2 font-medium text-white rounded-lg transition-colors flex items-center justify-center gap-2 shadow-sm disabled:opacity-50", isLockingDown ? "bg-red-600 hover:bg-red-700" : "bg-gray-800 hover:bg-gray-900")}>
                         {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : (isLockingDown ? "Confirm Lockdown" : "Confirm Unlock")}
                     </button>
                 </div>
@@ -162,71 +107,36 @@ function LockdownModal({ isOpen, onClose, onConfirm, isLockingDown, isLoading }:
     );
 }
 
-// Toggle Button (Shield)
-interface SecurityActionToggleProps {
-    status: 'resolved' | 'pending';
-    isThreat: boolean;
-    onClick: () => void;
-    isLoading?: boolean;
-    isDisabled?: boolean;
-}
-
-function SecurityActionToggle({ status, isThreat, onClick, isLoading, isDisabled }: SecurityActionToggleProps) {
+function SecurityActionToggle({ status, isThreat, onClick, isLoading, isDisabled }: any) {
     const [showTooltip, setShowTooltip] = useState(false);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
-
     const isPending = status === 'pending';
-    
-    const tooltipText = isPending 
-        ? "Mark as False Positive (Safe)"
-        : isThreat 
-            ? "Downgrade to False Positive" 
-            : "Escalate to Active Threat";
+    const tooltipText = isPending ? "Mark as False Positive (Safe)" : isThreat ? "Downgrade to False Positive" : "Escalate to Active Threat";
 
     const handleMouseEnter = () => {
         if (isDisabled || isLoading) return;
         if (timerRef.current) clearTimeout(timerRef.current);
         timerRef.current = setTimeout(() => setShowTooltip(true), 600);
     };
-
     const handleMouseLeave = () => {
         if (timerRef.current) clearTimeout(timerRef.current);
         setShowTooltip(false);
     };
 
-    useEffect(() => {
-        return () => {
-            if (timerRef.current) clearTimeout(timerRef.current);
-        };
-    }, []);
-
     return (
         <div className="relative flex items-center">
             <button
-                onClick={onClick}
-                onMouseEnter={handleMouseEnter}
-                onMouseLeave={handleMouseLeave}
-                disabled={isDisabled || isLoading}
+                onClick={onClick} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} disabled={isDisabled || isLoading}
                 className={cn(
                     "p-2 rounded-full transition-all duration-200 border shadow-sm",
-                    isPending 
-                        ? "bg-gray-50 border-gray-200 text-gray-400 hover:bg-green-50 hover:text-green-600 hover:border-green-200 hover:scale-105"
-                        : isThreat
-                            ? "bg-white border-gray-200 text-gray-400 hover:bg-green-50 hover:text-green-600 hover:border-green-200"
-                            : "bg-white border-gray-200 text-gray-400 hover:bg-red-50 hover:text-red-600 hover:border-red-200",
-                    
+                    isPending ? "bg-gray-50 border-gray-200 text-gray-400 hover:bg-green-50 hover:text-green-600 hover:border-green-200 hover:scale-105"
+                              : isThreat ? "bg-white border-gray-200 text-gray-400 hover:bg-green-50 hover:text-green-600 hover:border-green-200"
+                              : "bg-white border-gray-200 text-gray-400 hover:bg-red-50 hover:text-red-600 hover:border-red-200",
                     (isDisabled || isLoading) && "opacity-50 cursor-not-allowed transform-none"
                 )}
             >
-                {isLoading ? (
-                    <Loader2 className="w-5 h-5 animate-spin text-gray-500" />
-                ) : isPending ? (
-                    <ShieldCheck className="w-5 h-5" /> 
-                ) : (
-                    <ShieldAlert className="w-5 h-5" />
-                )}
+                {isLoading ? <Loader2 className="w-5 h-5 animate-spin text-gray-500" /> : isPending ? <ShieldCheck className="w-5 h-5" /> : <ShieldAlert className="w-5 h-5" />}
             </button>
-
             {showTooltip && !isDisabled && !isLoading && (
                 <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 w-48 bg-gray-800 text-white text-xs rounded-md py-1.5 px-3 z-50 animate-in fade-in zoom-in-95 duration-200 shadow-xl">
                     <div className="absolute right-[-4px] top-1/2 -translate-y-1/2 w-2 h-2 bg-gray-800 rotate-45"></div>
@@ -237,14 +147,7 @@ function SecurityActionToggle({ status, isThreat, onClick, isLoading, isDisabled
     );
 }
 
-// Review Button (Checkmark)
-interface ReviewButtonProps {
-    onClick: () => void;
-    isLoading?: boolean;
-    isDisabled?: boolean;
-}
-
-function ReviewButton({ onClick, isLoading, isDisabled }: ReviewButtonProps) {
+function ReviewButton({ onClick, isLoading, isDisabled }: any) {
     const [showTooltip, setShowTooltip] = useState(false);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -253,43 +156,26 @@ function ReviewButton({ onClick, isLoading, isDisabled }: ReviewButtonProps) {
         if (timerRef.current) clearTimeout(timerRef.current);
         timerRef.current = setTimeout(() => setShowTooltip(true), 600);
     };
-    
     const handleMouseLeave = () => {
         if (timerRef.current) clearTimeout(timerRef.current);
         setShowTooltip(false);
     };
 
-    useEffect(() => {
-        return () => {
-            if (timerRef.current) clearTimeout(timerRef.current);
-        };
-    }, []);
-
     return (
         <div className="relative flex items-center">
             <button
-                onClick={onClick}
-                onMouseEnter={handleMouseEnter}
-                onMouseLeave={handleMouseLeave}
-                disabled={isDisabled || isLoading}
+                onClick={onClick} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} disabled={isDisabled || isLoading}
                 className={cn(
                     "p-2 rounded-full transition-all duration-200 border shadow-sm bg-gray-50 border-gray-200 text-gray-400 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 hover:scale-105",
                     (isDisabled || isLoading) && "opacity-50 cursor-not-allowed transform-none"
                 )}
             >
-                {isLoading ? (
-                    <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
-                ) : (
-                    <FileCheck className="w-5 h-5" />
-                )}
+                {isLoading ? <Loader2 className="w-5 h-5 animate-spin text-blue-500" /> : <FileCheck className="w-5 h-5" />}
             </button>
-
             {showTooltip && !isDisabled && !isLoading && (
                 <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 w-48 bg-gray-800 text-white text-xs rounded-md py-1.5 px-3 z-50 animate-in fade-in zoom-in-95 duration-200 shadow-xl">
                     <div className="absolute right-[-4px] top-1/2 -translate-y-1/2 w-2 h-2 bg-gray-800 rotate-45"></div>
-                    <p className="font-medium relative z-10 text-center">
-                        Confirm & Archive (Mark Reviewed)
-                    </p>
+                    <p className="font-medium relative z-10 text-center">Confirm & Archive (Mark Reviewed)</p>
                 </div>
             )}
         </div>
@@ -313,16 +199,11 @@ export default function FrameSecurity() {
   const [error, setError] = useState<string | null>(null);
   const [loadingDots, setLoadingDots] = useState("");
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
-  
-  // Lockdown states
   const [lockdownLoading, setLockdownLoading] = useState(false);
   const [isLockdownModalOpen, setIsLockdownModalOpen] = useState(false);
-
   const { socket } = useWebSocket();
 
-  useEffect(() => {
-    document.title = "AIloQR - Security Center";
-  }, []);
+  useEffect(() => { document.title = "AIloQR - Security Center"; }, []);
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -361,27 +242,17 @@ export default function FrameSecurity() {
 
   const fetchSecurityData = useCallback(async (isBackgroundUpdate = false) => {
     const token = getToken();
-    if (!token) {
-        handleLogout();
-        return;
-    }
-    
-    if (!isBackgroundUpdate){
-        setLoading(true);
-    } 
+    if (!token) { handleLogout(); return; }
+    if (!isBackgroundUpdate) setLoading(true); 
     
     try {
         const response = await fetch(`${API_URL}/api/admin/security-data`, {
-            headers: { 
-                'Authorization': `Bearer ${token}`
-            },
+            headers: { 'Authorization': `Bearer ${token}` },
             cache: 'no-store' 
         });
 
         if (!response.ok) {
-            if (response.status === 401 || response.status === 403) {
-                throw new Error('Unauthorized access.');
-            }
+            if (response.status === 401 || response.status === 403) throw new Error('Unauthorized access.');
             const errorData = await response.json().catch(() => null);
             throw new Error(errorData?.message || 'Failed to fetch security data.');
         }
@@ -396,131 +267,87 @@ export default function FrameSecurity() {
     }
   }, [handleLogout]);
 
-  useEffect(() => {
-    fetchSecurityData(false);
-  }, [fetchSecurityData]);
+  useEffect(() => { fetchSecurityData(false); }, [fetchSecurityData]);
 
   useEffect(() => {
     if (!socket) return;
-
     let isFetching = false;
-
-    const handleUpdate = async (data: any) => {
+    const handleUpdate = async () => {
             if (isFetching) return; 
-            
             isFetching = true;
-            try {
-                await fetchSecurityData(true); 
-            } finally {
-                isFetching = false; 
-            }
+            try { await fetchSecurityData(true); } finally { isFetching = false; }
         };
 
     socket.on("dashboard_update", handleUpdate);
     socket.on("security_update", handleUpdate);
-
-    const handleReconnect = () => {
-        handleUpdate({ type: 'reconnect' });
-    };
-    
-    socket.on("connect", handleReconnect);
+    socket.on("connect", () => handleUpdate());
 
     return () => {
         socket.off("dashboard_update", handleUpdate);
         socket.off("security_update", handleUpdate);
-        socket.off("connect", handleReconnect);
+        socket.off("connect", handleUpdate);
     };
   }, [socket, fetchSecurityData]);
 
   useEffect(() => {
     if (!loading) return;
-    const interval = setInterval(() => {
-        setLoadingDots((prev) => (prev.length >= 3 ? "" : prev + "."));
-    }, 400);
+    const interval = setInterval(() => { setLoadingDots((prev) => (prev.length >= 3 ? "" : prev + ".")); }, 400);
     return () => clearInterval(interval);
   }, [loading]);
 
   const isGlobalLoading = actionLoadingId !== null || lockdownLoading;
 
-  // --- ACTIONS ---
-
   const handleToggleThreat = async (incident: SecurityIncident) => {
       if (isGlobalLoading) return;
       setActionLoadingId(incident.id);
       const token = getToken();
-      
-      let action = 'resolve'; 
-      if (incident.status === 'resolved') {
-          action = incident.is_threat ? 'resolve' : 'escalate';
-      }
+      let action = incident.status === 'resolved' ? (incident.is_threat ? 'resolve' : 'escalate') : 'resolve';
 
       try {
           await fetch(`${API_URL}/api/admin/log/${incident.id}/toggle-threat`, { 
-              method: 'POST', 
-              headers: { 
-                  'Authorization': `Bearer ${token}`,
-                  'Content-Type': 'application/json' 
-              },
-              body: JSON.stringify({ action }) 
+              method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) 
           });
-          
           await new Promise(resolve => setTimeout(resolve, 300));
           await fetchSecurityData(true);
       } catch (error) {
-          console.error("Action failed", error);
           alert("Failed to update status.");
-      } finally { 
-          setActionLoadingId(null); 
-      }
+      } finally { setActionLoadingId(null); }
   };
 
   const handleMarkReviewed = async (incident: SecurityIncident) => {
       if (isGlobalLoading) return;
-
       setActionLoadingId(incident.id);
-      const token = getToken();
       try {
-          await fetch(`${API_URL}/api/admin/log/${incident.id}/review`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
-          
+          await fetch(`${API_URL}/api/admin/log/${incident.id}/review`, { method: 'POST', headers: { 'Authorization': `Bearer ${getToken()}` } });
           await new Promise(resolve => setTimeout(resolve, 300));
           await fetchSecurityData(true);
       } catch (error) {
-          console.error("Review action failed", error);
           alert("Failed to mark as reviewed.");
       } finally { setActionLoadingId(null); }
   };
 
-  // Triggers the UI modal instead of native confirm
   const initiateLockdownToggle = () => {
       if (isGlobalLoading || !data) return;
       setIsLockdownModalOpen(true);
   };
 
-  // Executes the actual backend request after modal confirmation
   const confirmLockdown = async () => {
-      const token = getToken();
       setLockdownLoading(true);
-
       try {
           const response = await fetch(`${API_URL}/api/admin/system-lockdown`, {
-              method: 'POST',
-              headers: { 'Authorization': `Bearer ${token}` }
+              method: 'POST', headers: { 'Authorization': `Bearer ${getToken()}` }
           });
           if (response.ok) {
               await new Promise(resolve => setTimeout(resolve, 500)); 
               await fetchSecurityData(true);
-          } else {
-              alert("Failed to toggle system lockdown.");
-          }
+          } else alert("Failed to toggle system lockdown.");
       } catch (error) {
-          console.error("Error toggling lockdown:", error);
           alert("Network error.");
       } finally {
           setLockdownLoading(false);
-          setIsLockdownModalOpen(false); // Close modal on completion
+          setIsLockdownModalOpen(false);
       }
   };
-
 
   if (error && !data) {
     return (
@@ -538,28 +365,25 @@ export default function FrameSecurity() {
   }
 
   return (
-        <div className="flex flex-col min-h-screen bg-background relative">
+        // ESTRUCTURA FIXED (Idèntica a FramePolicies i FrameUsers)
+        <div className="fixed inset-0 flex flex-col w-full bg-background overflow-hidden">
             
-            {/* Lockdown Confirmation Modal */}
             <LockdownModal 
-                isOpen={isLockdownModalOpen}
-                onClose={() => setIsLockdownModalOpen(false)}
-                onConfirm={confirmLockdown}
-                isLockingDown={!data?.system_lockdown}
-                isLoading={lockdownLoading}
+                isOpen={isLockdownModalOpen} onClose={() => setIsLockdownModalOpen(false)} onConfirm={confirmLockdown}
+                isLockingDown={!data?.system_lockdown} isLoading={lockdownLoading}
             />
 
-            {/* Header Section */}
-            <div className="fixed top-0 left-0 right-0 z-30 bg-background pt-6 md:pt-8">
+            {/* Header Fixat */}
+            <div className="shrink-0 bg-background pt-6 md:pt-8 w-full z-40">
                 <div className="w-full mx-auto px-4 sm:px-6 lg:px-10">
                     <div className="relative flex justify-center items-center h-12 md:h-14 mb-3">
-                        <button onClick={() => navigate('/admin')} disabled={isGlobalLoading} className={`absolute left-0 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 md:w-12 md:h-12 bg-[#eeeeee] hover:bg-[#e0e0e0] active:bg-[#d5d5d5] rounded-full transition-colors ${isGlobalLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                        <button onClick={() => navigate('/admin')} disabled={isGlobalLoading} className={cn("absolute left-0 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 md:w-12 md:h-12 bg-[#eeeeee] hover:bg-[#e0e0e0] rounded-full transition-colors", isGlobalLoading && 'opacity-50 cursor-not-allowed')}>
                             <ArrowLeft className="w-6 h-6 text-black" />
                         </button>
                         <h1 className="text-xl md:text-2xl font-semibold text-black text-center flex items-center gap-2">
                             <Lock className="w-5 h-5 md:w-6 md:h-6" /> Security Center
                         </h1>
-                        <button onClick={() => navigate('/profile')} disabled={isGlobalLoading} className={`absolute right-0 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 md:w-12 md:h-12 bg-[#eeeeee] hover:bg-[#e0e0e0] rounded-full transition-colors ${isGlobalLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                        <button onClick={() => navigate('/profile')} disabled={isGlobalLoading} className={cn("absolute right-0 top-1/2 -translate-y-1/2 flex items-center justify-center w-10 h-10 md:w-12 md:h-12 bg-[#eeeeee] hover:bg-[#e0e0e0] rounded-full transition-colors", isGlobalLoading && 'opacity-50 cursor-not-allowed')}>
                              <UserCircle className="w-6 h-6 text-black" />
                         </button>
                     </div>
@@ -567,23 +391,21 @@ export default function FrameSecurity() {
                 </div>
             </div>
 
-            {/* Main Content Area */}
-            <div className="flex-grow w-full flex flex-col gap-10 px-4 sm:px-6 lg:px-10 pb-12 pt-8 md:pt-12">
+            {/* Contingut Scrollable amb l'animació "slide-in-from-bottom" */}
+            <div className="flex-1 min-h-0 w-full flex flex-col gap-10 px-4 sm:px-6 lg:px-10 pb-12 pt-6 overflow-y-auto">
 
                 {loading && !data ? (
-                    <div className="flex flex-col items-center justify-center h-[60vh] w-full">
+                    <div className="flex flex-col items-center justify-center h-full w-full">
                         <div className="relative">
                             <p className="text-gray-500 font-medium">Fetching security data</p>
                             <span className="absolute left-full top-0 text-gray-500 font-medium">{loadingDots}</span>
                         </div>
                     </div>
                 ) : (    
-                    <div className="w-full animate-in fade-in duration-500">
+                    <div className="w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
 
                         <div className="w-full mb-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
                             <SectionTitle>Security Overview</SectionTitle>
-                            
-                            {/* Lockdown Status Indicator */}
                             {data?.system_lockdown && (
                                 <div className="bg-red-600 text-white px-6 py-3 rounded-lg flex items-center gap-3 shadow-lg animate-pulse">
                                     <Lock className="w-6 h-6" /> 
@@ -595,29 +417,21 @@ export default function FrameSecurity() {
                             )}
                         </div>
 
-                        {/* Status Cards */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-                            {/* Card 1 */}
                             <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm flex items-center justify-between">
                                 <div>
                                     <p className="text-gray-500 text-sm font-medium">Active Threats</p>
                                     <p className="text-3xl font-bold text-red-600 mt-1">{data?.stats.active_threats}</p>
                                 </div>
-                                <div className="h-12 w-12 bg-red-100 rounded-full flex items-center justify-center">
-                                    <ShieldAlert className="h-6 w-6 text-red-600" />
-                                </div>
+                                <div className="h-12 w-12 bg-red-100 rounded-full flex items-center justify-center"><ShieldAlert className="h-6 w-6 text-red-600" /></div>
                             </div>
-                            {/* Card 2 */}
                             <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm flex items-center justify-between">
                                 <div>
                                     <p className="text-gray-500 text-sm font-medium">Blocked attempts (24h)</p>
                                     <p className="text-3xl font-bold text-gray-800 mt-1">{data?.stats.blocked_attempts_24h}</p>
                                 </div>
-                                <div className="h-12 w-12 bg-gray-100 rounded-full flex items-center justify-center">
-                                    <BanIcon className="h-6 w-6 text-gray-600" />
-                                </div>
+                                <div className="h-12 w-12 bg-gray-100 rounded-full flex items-center justify-center"><BanIcon className="h-6 w-6 text-gray-600" /></div>
                             </div>
-                            {/* Card 3 (Health) */}
                             <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm flex items-center justify-between">
                                 <div>
                                     <p className="text-gray-500 text-sm font-medium">System Health</p>
@@ -626,89 +440,43 @@ export default function FrameSecurity() {
                                     </p>
                                 </div>
                                 <div className={cn("h-12 w-12 rounded-full flex items-center justify-center transition-colors", getHealthBg(data?.stats.system_health))}>
-                                    {data?.system_lockdown ? (
-                                        <Lock className="h-6 w-6" /> 
-                                    ) : (
-                                        data?.stats.system_health === 'Critical' ? <AlertTriangle className="h-6 w-6" /> : <Activity className="h-6 w-6" />
-                                    )}
+                                    {data?.system_lockdown ? <Lock className="h-6 w-6" /> : (data?.stats.system_health === 'Critical' ? <AlertTriangle className="h-6 w-6" /> : <Activity className="h-6 w-6" />)}
                                 </div>
                             </div>
                         </div>
 
-                        {/* Recent Incidents Table */}
                         <div className="w-full mb-12">
                             <h3 className="text-xl md:text-2xl font-semibold text-gray-800 mb-4">Recent Activity & Alerts</h3>
                             <div className="bg-white border border-gray-200 rounded-xl overflow-visible shadow-sm">
                                 {data?.recent_incidents && data.recent_incidents.length > 0 ? (
                                     <div className="divide-y divide-gray-100">
                                         {data.recent_incidents.map((incident) => (
-                                            <div 
-                                                key={incident.id} 
-                                                className={cn(
-                                                    "p-4 md:p-5 flex flex-col md:flex-row md:items-center justify-between transition-colors", 
-                                                    incident.status === 'pending'
-                                                        ? incident.is_ai 
-                                                            ? "bg-indigo-50"
-                                                            : "bg-red-50"
-                                                        : "bg-white hover:bg-gray-50 opacity-75"
-                                                )}
-                                            >
+                                            <div key={incident.id} className={cn("p-4 md:p-5 flex flex-col md:flex-row md:items-center justify-between transition-colors", incident.status === 'pending' ? incident.is_ai ? "bg-indigo-50" : "bg-red-50" : "bg-white hover:bg-gray-50 opacity-75")}>
                                                 <div className="flex flex-col gap-1 mb-3 md:mb-0">
                                                     <div className="flex items-center gap-3">
-                                                        
-                                                        <span className={cn("px-2 py-1 rounded-md text-xs font-bold uppercase border", getSeverityColor(incident.severity))}>
-                                                            {incident.severity}
-                                                        </span>
-                                                        
-                                                        <span className={cn("font-medium flex items-center gap-2", incident.status === 'pending' ? "text-red-900" : "text-gray-700")}>
-                                                            {incident.type}
-                                                        </span>
-
+                                                        <span className={cn("px-2 py-1 rounded-md text-xs font-bold uppercase border", getSeverityColor(incident.severity))}>{incident.severity}</span>
+                                                        <span className={cn("font-medium flex items-center gap-2", incident.status === 'pending' ? "text-red-900" : "text-gray-700")}>{incident.type}</span>
                                                         {incident.status === 'pending' ? (
-                                                            incident.is_ai ? (
-                                                                <span className="flex items-center text-xs font-bold text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full border border-indigo-200">
-                                                                    <Sparkles className="w-3 h-3 mr-1" /> AI Suspicion
-                                                                </span>
-                                                            ) : (
-                                                                <span className="flex items-center text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full animate-pulse">
-                                                                    <AlertTriangle className="w-3 h-3 mr-1" /> Action Required
-                                                                </span>
-                                                            )
+                                                            incident.is_ai ? <span className="flex items-center text-xs font-bold text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full border border-indigo-200"><Sparkles className="w-3 h-3 mr-1" /> AI Suspicion</span>
+                                                                           : <span className="flex items-center text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full animate-pulse"><AlertTriangle className="w-3 h-3 mr-1" /> Action Required</span>
                                                         ) : (
-                                                            incident.is_threat ? (
-                                                                <span className="flex items-center text-xs font-bold text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200">
-                                                                    <FileCheck className="w-3 h-3 mr-1 text-gray-500" /> Reviewed Threat
-                                                                </span>
-                                                            ) : (
-                                                                <span className="flex items-center text-xs font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full border border-green-200">
-                                                                    <ShieldCheck className="w-3 h-3 mr-1" /> False Positive
-                                                                </span>
-                                                            )
+                                                            incident.is_threat ? <span className="flex items-center text-xs font-bold text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200"><FileCheck className="w-3 h-3 mr-1 text-gray-500" /> Reviewed Threat</span>
+                                                                               : <span className="flex items-center text-xs font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full border border-green-200"><ShieldCheck className="w-3 h-3 mr-1" /> False Positive</span>
                                                         )}
                                                     </div>
-
                                                     <div className="text-sm text-gray-500 flex flex-wrap gap-x-4 gap-y-1 mt-1 pl-1">
                                                         <span>User: <span className="font-mono text-gray-700">{incident.source_id}</span></span>
                                                         <span className="hidden sm:inline">•</span>
                                                         <span>{incident.timestamp}</span>
                                                         {incident.description !== incident.type && !incident.type.includes(incident.description) && (
-                                                            <>
-                                                                <span className="hidden sm:inline">•</span>
-                                                                <span className="italic text-gray-400">{incident.description}</span>
-                                                            </>
+                                                            <><span className="hidden sm:inline">•</span><span className="italic text-gray-400">{incident.description}</span></>
                                                         )}
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-3 pl-0 md:pl-4">
                                                     {incident.status === 'pending' && <ReviewButton onClick={() => handleMarkReviewed(incident)} isLoading={actionLoadingId === incident.id} isDisabled={isGlobalLoading} />}
                                                     {incident.status === 'pending' && <div className="h-6 w-px bg-gray-300"></div>}
-                                                    <SecurityActionToggle 
-                                                        status={incident.status} 
-                                                        isThreat={incident.is_threat}
-                                                        onClick={() => handleToggleThreat(incident)} 
-                                                        isLoading={actionLoadingId === incident.id} 
-                                                        isDisabled={isGlobalLoading} 
-                                                    />
+                                                    <SecurityActionToggle status={incident.status} isThreat={incident.is_threat} onClick={() => handleToggleThreat(incident)} isLoading={actionLoadingId === incident.id} isDisabled={isGlobalLoading} />
                                                 </div>
                                             </div>
                                         ))}
@@ -717,24 +485,12 @@ export default function FrameSecurity() {
                             </div>
                         </div>
 
-                        {/* Quick Actions */}
                         <div className="w-full">
                             <h3 className="text-xl md:text-2xl font-semibold text-gray-800 mb-4">Security Actions</h3>
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                                <ActionButton onClick={() => navigate('/audit-logs')} variant="secondary" icon={Search} disabled={isGlobalLoading}>
-                                    Audit Logs
-                                </ActionButton>
-                                <ActionButton onClick={() => navigate('/policies')} variant="secondary" icon={Lock} disabled={isGlobalLoading}>
-                                    Firewall & Rules
-                                </ActionButton>
-                                
-                                {/* TRIGGER MODAL INSTEAD OF NATIVE CONFIRM */}
-                                <ActionButton 
-                                    onClick={initiateLockdownToggle} 
-                                    variant={data?.system_lockdown ? "danger" : "primary"} 
-                                    icon={data?.system_lockdown ? Unlock : ShieldAlert}
-                                    disabled={isGlobalLoading}
-                                >
+                                <ActionButton onClick={() => navigate('/audit-logs')} variant="secondary" icon={Search} disabled={isGlobalLoading}>Audit Logs</ActionButton>
+                                <ActionButton onClick={() => navigate('/policies')} variant="secondary" icon={Lock} disabled={isGlobalLoading}>Security Policies</ActionButton>
+                                <ActionButton onClick={initiateLockdownToggle} variant={data?.system_lockdown ? "danger" : "primary"} icon={data?.system_lockdown ? Unlock : ShieldAlert} disabled={isGlobalLoading}>
                                     {data?.system_lockdown ? "Unlock System" : "System Lockdown"}
                                 </ActionButton>
                             </div>

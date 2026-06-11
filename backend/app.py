@@ -9,7 +9,7 @@ from flask import Flask, render_template, request, jsonify, send_file, Response
 from flask_cors import CORS
 import jwt
 from QR_generation_validation import generate_qr, verify_qr
-from security_analyzer import predict_anomaly, send_anomaly_alert, load_or_train_model, send_access_denied_alert, get_admin_emails, start_retraining_scheduler
+from security_analyzer import predict_anomaly, send_anomaly_alert, load_or_train_model, send_access_denied_alert, get_admin_emails, start_retraining_scheduler, get_anomaly_threshold
 import uuid
 from database import save_user, check_password, get_db_connection, get_user_by_email, get_all_roles
 import base64
@@ -562,7 +562,7 @@ def download_csv(user_id, role, export_type):
 # --- SECURITY ENDPOINTS ---
 @app.route('/api/admin/logs/suspicious')
 def get_suspicious_logs():
-    threshold = float(os.getenv('ANOMALY_THRESHOLD', -0.025))
+    threshold = get_anomaly_threshold()
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
@@ -597,23 +597,59 @@ def get_denied_logs():
              'time': str(r[4]), 'reason': r[5]} for r in logs]
     return jsonify(data)
 
-@app.route('/api/admin/rules/access', methods=['GET', 'POST', 'DELETE'])
-def manage_access_rules():
+
+# --- FIREWALL & POLICIES ENDPOINTS ---
+
+@app.route('/api/admin/rules/access', methods=['GET', 'POST', 'PUT', 'DELETE'])
+@token_required
+@admin_required
+def manage_access_rules(user_id, role):
     conn = get_db_connection()
     cur = conn.cursor()
     
     if request.method == 'GET':
-        cur.execute("SELECT id, role, allowed_area FROM access_rules")
+        cur.execute("SELECT id, role, allowed_area, allowed_days, start_time, end_time, is_active FROM access_rules ORDER BY role, allowed_area")
         rows = cur.fetchall()
-        data = [{'id': r[0], 'role': r[1], 'area': r[2]} for r in rows]
+        data = []
+        for r in rows:
+            data.append({
+                'id': r['id'],
+                'role': r['role'],
+                'area': r['allowed_area'],
+                'days': r['allowed_days'],
+                'start_time': str(r['start_time']),
+                'end_time': str(r['end_time']),
+                'active': r['is_active']
+            })
+        cur.close()
         conn.close()
         return jsonify(data)
     
     if request.method == 'POST':
         data = request.json
-        cur.execute("INSERT INTO access_rules (role, allowed_area) VALUES (%s, %s)", 
-                    (data['role'], data['area']))
+        # Default values for optional fields
+        days = data.get('days', '0,1,2,3,4,5,6')
+        start_time = data.get('start_time', '00:00:00')
+        end_time = data.get('end_time', '23:59:59')
+        is_active = data.get('active', True)
+        
+        cur.execute("""
+            INSERT INTO access_rules (role, allowed_area, allowed_days, start_time, end_time, is_active) 
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (data['role'], data['area'], days, start_time, end_time, is_active))
         conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({'status': 'success'})
+
+    if request.method == 'PUT':
+        # To activate/deactivate a rule, we only need the ID and the new active status
+        data = request.json
+        rule_id = data.get('id')
+        is_active = data.get('active')
+        cur.execute("UPDATE access_rules SET is_active = %s WHERE id = %s", (is_active, rule_id))
+        conn.commit()
+        cur.close()
         conn.close()
         return jsonify({'status': 'success'})
 
@@ -621,11 +657,45 @@ def manage_access_rules():
         rule_id = request.args.get('id')
         cur.execute("DELETE FROM access_rules WHERE id = %s", (rule_id,))
         conn.commit()
+        cur.close()
         conn.close()
         return jsonify({'status': 'deleted'})
 
+
+@app.route('/api/admin/config', methods=['GET', 'POST'])
+@token_required
+@admin_required
+def manage_system_config(user_id, role):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    if request.method == 'GET':
+        cur.execute("SELECT key_name, value_data FROM system_config")
+        rows = cur.fetchall()
+        data = {r['key_name']: r['value_data'] for r in rows}
+        cur.close()
+        conn.close()
+        return jsonify(data)
+        
+    if request.method == 'POST':
+        data = request.json
+        for key, value in data.items():
+            cur.execute("""
+                INSERT INTO system_config (key_name, value_data) 
+                VALUES (%s, %s) 
+                ON CONFLICT (key_name) 
+                DO UPDATE SET value_data = EXCLUDED.value_data
+            """, (key, str(value)))
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({'status': 'success'})
+
+
 @app.route('/api/admin/rules/alerts', methods=['GET', 'POST', 'DELETE'])
-def manage_alert_rules():
+@token_required
+@admin_required
+def manage_alert_rules(user_id, role):
     conn = get_db_connection()
     cur = conn.cursor()
     
@@ -633,6 +703,7 @@ def manage_alert_rules():
         cur.execute("SELECT id, event_type, role_filter, area_filter FROM alert_rules")
         rows = cur.fetchall()
         data = [{'id': r[0], 'event': r[1], 'role': r[2], 'area': r[3]} for r in rows]
+        cur.close()
         conn.close()
         return jsonify(data)
 
@@ -641,6 +712,7 @@ def manage_alert_rules():
         cur.execute("INSERT INTO alert_rules (event_type, role_filter, area_filter) VALUES (%s, %s, %s)", 
                     (data['event'], data['role'], data['area']))
         conn.commit()
+        cur.close()
         conn.close()
         return jsonify({'status': 'success'})
         
@@ -648,11 +720,11 @@ def manage_alert_rules():
         rule_id = request.args.get('id')
         cur.execute("DELETE FROM alert_rules WHERE id = %s", (rule_id,))
         conn.commit()
+        cur.close()
         conn.close()
         return jsonify({'status': 'deleted'})
 
-CRITICAL_THRESHOLD = 10
-REPETITION_THRESHOLD = 3 
+# -----------------------------------------------
 
 @app.route('/api/admin/log/<int:log_id>/toggle-threat', methods=['POST'])
 @token_required
@@ -1245,7 +1317,7 @@ def evaluate_ai_severity(risk_score):
     The function categorizes anomalies into "CRITICAL", "Medium", or "Low"
     """
     try:
-        threshold = float(os.getenv('ANOMALY_THRESHOLD', -0.025))
+        threshold = get_anomaly_threshold()
     except ValueError:
         threshold = -0.025
         
@@ -1440,7 +1512,7 @@ def auto_review_old_logs(conn):
         yesterday_str = yesterday_obj.strftime("%Y-%m-%d %H:%M:%S")
         
         try:
-            threshold = float(os.getenv('ANOMALY_THRESHOLD', -0.025))
+            threshold = get_anomaly_threshold()
         except ValueError:
             threshold = -0.025
             
