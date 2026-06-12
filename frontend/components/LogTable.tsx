@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Loader2, CheckCircle } from "lucide-react";
 import { cn } from "./ui/utils";
 
+// --- TypeScript Data Interfaces ---
 export interface LogEntry {
     id?: string;
     user_id: string;
@@ -18,9 +19,11 @@ interface LogTableProps {
     logs: LogEntry[];
     loading: boolean;
     emptyMessage?: string;
-    isAdmin?: boolean; // Prop to hide/show details
+    isAdmin?: boolean; 
 }
 
+// --- Core Presentation Component ---
+// This abstract component renders the access logs adaptively based on the user's role authorization.
 export default function LogTable({ 
     logs, 
     loading, 
@@ -28,14 +31,17 @@ export default function LogTable({
     isAdmin = false 
 }: LogTableProps) {
     
-    // State for the copy-to-clipboard toast notification
+    // State for managing the clipboard feedback toast notification
     const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-    // Function to handle clipboard copying and toast triggering
+    // Utility function to securely copy data to the system clipboard
     const copyToClipboard = (text: string, fieldName: string) => {
         if (!text) return;
         navigator.clipboard.writeText(text);
+        
         setToastMessage(`${fieldName} copied to clipboard!`);
+        
+        // Auto-dismiss the toast after 2.5 seconds
         setTimeout(() => {
             setToastMessage(null);
         }, 2500);
@@ -51,19 +57,20 @@ export default function LogTable({
                 <table className="w-full text-left border-collapse min-w-[950px] table-fixed animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <thead className="bg-[#c8102e] text-white sticky top-0 z-10 shadow-[0_1px_0_#e5e7eb]">
                         <tr>
-                            {/* Adjusted column widths dynamically based on isAdmin to maximize space for Reason */}
-                            <th className={cn("p-4 font-semibold", isAdmin ? "w-[15%]" : "w-[20%]")}>Time</th>
-                            <th className={cn("p-4 font-semibold", isAdmin ? "w-[15%]" : "w-[25%]")}>User ID</th>
-                            <th className={cn("p-4 font-semibold", isAdmin ? "w-[10%]" : "w-[15%]")}>Role</th>
-                            <th className={cn("p-4 font-semibold", isAdmin ? "w-[15%]" : "w-[25%]")}>Area</th>
+                            {/* Dynamic width allocation to prevent text wrapping and utilize full container space */}
+                            <th className={cn("p-4 font-semibold", isAdmin ? "w-[18%]" : "w-[20%]")}>Time</th>
+                            <th className={cn("p-4 font-semibold", isAdmin ? "w-[18%]" : "w-[25%]")}>User ID</th>
+                            <th className={cn("p-4 font-semibold", isAdmin ? "w-[12%]" : "w-[15%]")}>Role</th>
+                            <th className={cn("p-4 font-semibold", isAdmin ? "w-[18%]" : "w-[25%]")}>Area</th>
                             <th className={cn("p-4 font-semibold", isAdmin ? "w-[10%]" : "w-[15%]")}>Status</th>
                             {isAdmin && (
-                                <th className="p-4 font-semibold w-[35%]">Reason / Detail</th>
+                                <th className="p-4 font-semibold w-auto">Reason / Detail</th>
                             )}
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                         {logs.map((log, index) => {
+                            // Strip milliseconds if present for cleaner UI rendering
                             const timeStr = log.access_time?.split('.')[0] || log.access_time;
                             return (
                                 <tr 
@@ -102,7 +109,7 @@ export default function LogTable({
                                         {log.area}
                                     </td>
                                     
-                                    {/* Status: Simplified typography, no underline, no copy action needed */}
+                                    {/* Authorization Status Cell */}
                                     <td className="p-4 text-sm whitespace-nowrap">
                                         <span className={cn(
                                             "font-bold text-xs tracking-wider", 
@@ -112,12 +119,11 @@ export default function LogTable({
                                         </span>
                                     </td>
                                     
-                                    {/* Reason conditionally rendered for Admins */}
+                                    {/* Deep Reason Auditing conditionally rendered for Administrators */}
                                     {isAdmin && (
                                         <td 
-                                            className="p-4 text-sm text-gray-700 truncate cursor-pointer hover:text-blue-600 transition-colors" 
-                                            title="Click to copy"
-                                            onClick={() => copyToClipboard(log.reason, "Reason")}
+                                            className="p-4 text-sm text-gray-700 truncate" 
+                                            title={log.reason}
                                         >
                                             {log.reason}
                                         </td>
@@ -133,7 +139,7 @@ export default function LogTable({
                 </div>
             )}
 
-            {/* Floating Toast Notification for Copy Actions */}
+            {/* Application Feedback Component */}
             {toastMessage && (
                 <div className="fixed bottom-8 right-8 z-50 bg-gray-900 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4 duration-300">
                     <CheckCircle className="w-5 h-5 text-green-400" />

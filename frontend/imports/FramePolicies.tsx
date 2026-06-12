@@ -1,14 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { 
-    ArrowLeft, UserCircle, Shield, BrainCircuit, BellRing, 
+    ArrowLeft, UserCircle, BrainCircuit, BellRing, 
     Plus, Trash2, Clock, MapPin, Power, Loader2, AlertTriangle, X
 } from "lucide-react";
 import { cn } from "../components/ui/utils";
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
-// --- Interfaces ---
+// --- TypeScript Interfaces ---
 interface AccessRule {
     id: number;
     role: string;
@@ -30,6 +30,8 @@ interface NewRuleData {
 
 export default function FramePolicies() {
     const navigate = useNavigate();
+    
+    // UI Navigation State
     const [activeTab, setActiveTab] = useState<'access' | 'ai' | 'alerts'>('access');
     
     // States for Real Data (Access Rules)
@@ -37,105 +39,128 @@ export default function FramePolicies() {
     const [rules, setRules] = useState<AccessRule[]>([]);
     const [hasUnsavedRules, setHasUnsavedRules] = useState(false);
     
-    // States for Config (AI & Lockdown)
-    const [aiThreshold, setAiThreshold] = useState(25); // UI 0-100 representation
+    // States for Core System Configuration (AI & Lockdown)
+    const [aiThreshold, setAiThreshold] = useState(25); // UI representation mapped to 0-100
     const [originalSystemLockdown, setOriginalSystemLockdown] = useState(false);
     const [systemLockdown, setSystemLockdown] = useState(false);
     
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     
-    // Modal State
+    // Modal Management State
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [newRule, setNewRule] = useState<NewRuleData>({
         role: 'Student', area: '', days: '0,1,2,3,4', start_time: '08:00', end_time: '20:00', active: true
     });
 
-    // Extract dynamic areas from existing rules for the dropdown
+    // Dynamically extract unique areas from the existing rule set for the dropdown menu
     const existingAreas = Array.from(new Set(originalRules.map(r => r.area)));
     if (!existingAreas.includes('ALL')) existingAreas.unshift('ALL');
 
     const getToken = () => localStorage.getItem('token');
 
-    // --- FETCH DATA ---
-    const fetchData = useCallback(async () => {
+    // --- DATA FETCHING ARCHITECTURE ---
+    // Utilizes AbortController to safely manage component unmounting during asynchronous operations
+    const fetchData = useCallback(async (signal?: AbortSignal) => {
         setLoading(true);
         const token = getToken();
         try {
-            // Fetch Rules
+            // Concurrent Request 1: Fetch Access Control Rules
             const rulesRes = await fetch(`${API_URL}/api/admin/rules/access`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: { 'Authorization': `Bearer ${token}` },
+                signal
             });
             if (rulesRes.ok) {
                 const fetchedRules = await rulesRes.json();
-                setRules(fetchedRules);
-                setOriginalRules(JSON.parse(JSON.stringify(fetchedRules))); // Deep copy for comparison
-                setHasUnsavedRules(false);
+                
+                if (!signal?.aborted) {
+                    setRules(fetchedRules);
+                    // Deep copy to serve as a baseline for detecting unsaved local changes
+                    setOriginalRules(JSON.parse(JSON.stringify(fetchedRules))); 
+                    setHasUnsavedRules(false);
+                }
             }
 
-            // Fetch Global Config
+            // Concurrent Request 2: Fetch Global Security Configurations
             const configRes = await fetch(`${API_URL}/api/admin/config`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: { 'Authorization': `Bearer ${token}` },
+                signal
             });
             if (configRes.ok) {
                 const config = await configRes.json();
                 
-                const isLocked = config.system_lockdown === 'true';
-                setOriginalSystemLockdown(isLocked);
-                setSystemLockdown(isLocked);
-                
-                if (config.anomaly_threshold) {
-                    const rawVal = parseFloat(config.anomaly_threshold);
-                    let uiVal = (rawVal + 0.1) * 1000; 
-                    if (uiVal < 0) uiVal = 0;
-                    if (uiVal > 100) uiVal = 100;
-                    setAiThreshold(Math.round(uiVal));
+                if (!signal?.aborted) {
+                    const isLocked = config.system_lockdown === 'true';
+                    setOriginalSystemLockdown(isLocked);
+                    setSystemLockdown(isLocked);
+                    
+                    // Normalize the backend threshold (-0.1 to 0.9) to a 0-100 scale for UI clarity
+                    if (config.anomaly_threshold) {
+                        const rawVal = parseFloat(config.anomaly_threshold);
+                        let uiVal = (rawVal + 0.1) * 1000; 
+                        if (uiVal < 0) uiVal = 0;
+                        if (uiVal > 100) uiVal = 100;
+                        setAiThreshold(Math.round(uiVal));
+                    }
                 }
             }
-        } catch (error) {
-            console.error("Error fetching policies:", error);
+        } catch (error: any) {
+            if (error.name === 'AbortError') return;
+            if (!signal?.aborted) {
+                console.error("Error fetching policies:", error);
+            }
         } finally {
-            setLoading(false);
+            if (!signal?.aborted) {
+                setLoading(false);
+            }
         }
     }, []);
 
+    // Component mounting lifecycle hook
     useEffect(() => {
         document.title = "AIloQR - Security Policies";
-        fetchData();
+        const controller = new AbortController();
+        fetchData(controller.signal);
+        
+        return () => controller.abort();
     }, [fetchData]);
 
-    // --- RULE ACTIONS (Local & Batch Save) ---
+    // --- RULE MANAGEMENT (Local Mutators & Batch Processing) ---
     
+    // Toggles the active status of a rule locally before committing to the database
     const handleToggleRuleLocal = (id: number) => {
         setRules(prev => prev.map(r => r.id === id ? { ...r, active: !r.active } : r));
         setHasUnsavedRules(true);
     };
 
+    // Removes a rule locally from the state array
     const handleDeleteRuleLocal = (id: number) => {
         setRules(prev => prev.filter(r => r.id !== id));
         setHasUnsavedRules(true);
     };
 
+    // Reverts all local changes by restoring the deep-copied original state
     const handleCancelRules = () => {
-        setRules(JSON.parse(JSON.stringify(originalRules))); // Restore from backup
+        setRules(JSON.parse(JSON.stringify(originalRules)));
         setHasUnsavedRules(false);
     };
 
+    // Executes a batch transaction to synchronize local UI changes with the backend database
     const handleSaveRules = async () => {
         setSaving(true);
         try {
-            // 1. Find which rules changed their active status
+            // 1. Isolate rules that have altered their active status
             const changedRules = rules.filter(r => {
                 const orig = originalRules.find(o => o.id === r.id);
                 return orig && orig.active !== r.active;
             });
 
-            // 2. Find which rules were deleted locally
+            // 2. Identify rules that exist in the original database but were removed locally
             const deletedRules = originalRules.filter(o => !rules.find(r => r.id === o.id));
 
             const requests: Promise<any>[] = [];
 
-            // Queue PUT requests for modifications
+            // Queue PUT network requests for modifications
             changedRules.forEach(r => {
                 requests.push(fetch(`${API_URL}/api/admin/rules/access`, {
                     method: 'PUT',
@@ -144,7 +169,7 @@ export default function FramePolicies() {
                 }));
             });
 
-            // Queue DELETE requests for removals
+            // Queue DELETE network requests for removals
             deletedRules.forEach(r => {
                 requests.push(fetch(`${API_URL}/api/admin/rules/access?id=${r.id}`, {
                     method: 'DELETE',
@@ -152,18 +177,19 @@ export default function FramePolicies() {
                 }));
             });
 
-            // Execute all API calls concurrently
+            // Execute all API calls concurrently to minimize network latency overhead
             await Promise.all(requests);
             
-            // Refresh UI with verified server data
+            // Refresh the UI context with verified server data to ensure consistency
             await fetchData();
         } catch (e) {
-            console.error(e);
+            console.error("Batch save transaction failed:", e);
         } finally {
             setSaving(false);
         }
     };
 
+    // Submits a new security policy to the access control matrix
     const handleAddRule = async () => {
         try {
             await fetch(`${API_URL}/api/admin/rules/access`, {
@@ -173,7 +199,9 @@ export default function FramePolicies() {
             });
             setIsAddModalOpen(false);
             fetchData();
-        } catch (e) { console.error(e); }
+        } catch (e) { 
+            console.error("Failed to create rule:", e); 
+        }
     };
 
     const openAddRuleModal = () => {
@@ -181,25 +209,27 @@ export default function FramePolicies() {
         setIsAddModalOpen(true);
     };
 
-    // --- SYSTEM CONFIG ACTIONS ---
+    // --- SYSTEM CONFIGURATION ACTIONS ---
 
     const handleToggleLockdownLocal = () => {
         setSystemLockdown(prev => !prev);
     };
 
+    // Pushes configuration alterations to the core system settings
     const handleSaveConfig = async () => {
         setSaving(true);
+        // Translate the UI percentage back to the algorithmic raw threshold
         const rawThreshold = (aiThreshold / 1000) - 0.1;
         try {
-            // 1. Save Threshold via generic config endpoint
+            // 1. Update the AI Detection Threshold parameters
             await fetch(`${API_URL}/api/admin/config`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ anomaly_threshold: rawThreshold.toFixed(4) })
             });
 
-            // 2. If Lockdown state changed locally, trigger the specific backend endpoint 
-            // so the backend logic (like sending emails) runs correctly.
+            // 2. Process system lockdown state changes securely
+            // This triggers specific backend protocols (like WebSocket broadcasts or notification dispatchers)
             if (systemLockdown !== originalSystemLockdown) {
                 await fetch(`${API_URL}/api/admin/system-lockdown`, {
                     method: 'POST',
@@ -207,15 +237,16 @@ export default function FramePolicies() {
                 });
             }
 
-            // Refresh UI
+            // Force a state refresh to validate successful operations
             await fetchData();
         } catch (e) { 
-            console.error(e); 
+            console.error("Configuration update failed:", e); 
         } finally {
             setSaving(false);
         }
     };
 
+    // Helper formatter for rendering database bitmasks into human-readable day schedules
     const formatDays = (daysStr: string) => {
         if (daysStr === '0,1,2,3,4,5,6') return 'Every day';
         if (daysStr === '0,1,2,3,4') return 'Mon - Fri';
@@ -226,7 +257,7 @@ export default function FramePolicies() {
     return (
         <div className="fixed inset-0 flex flex-col w-full bg-background overflow-hidden">
             
-            {/* ADD RULE MODAL */}
+            {/* POLICY CREATION MODAL */}
             {isAddModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
                     <div className="bg-white rounded-xl shadow-xl w-[90%] max-w-md overflow-hidden">
@@ -275,7 +306,7 @@ export default function FramePolicies() {
                 </div>
             )}
 
-            {/* --- HEADER --- */}
+            {/* --- STATIC HEADER & NAVIGATION --- */}
             <div className="shrink-0 bg-background pt-6 md:pt-8 w-full z-40 animate-in fade-in slide-in-from-top-4 duration-500">
                 <div className="w-full mx-auto px-4 sm:px-6 lg:px-10">
                     <div className="relative flex justify-center items-center h-12 md:h-14 mb-3">
@@ -290,7 +321,7 @@ export default function FramePolicies() {
                         </button>
                     </div>
                     
-                    {/* TABS NAVIGATION */}
+                    {/* MODULAR TAB NAVIGATION */}
                     <div className="flex items-center gap-6 md:gap-10 border-b border-[#e6e6e6] mt-4 px-2">
                         <button onClick={() => setActiveTab('access')} className={cn("pb-3 text-sm md:text-base font-medium transition-colors border-b-2 flex items-center gap-2", activeTab === 'access' ? "border-[#c8102e] text-[#c8102e]" : "border-transparent text-gray-500 hover:text-gray-800")}>
                             <Clock className="w-4 h-4" /> Access Rules
@@ -305,14 +336,14 @@ export default function FramePolicies() {
                 </div>
             </div>
 
-            {/* --- CONTENT ZONE --- */}
+            {/* --- DYNAMIC CONTENT RENDERING ZONE --- */}
             <div className="flex-1 min-h-0 w-full flex flex-col gap-6 px-4 sm:px-6 lg:px-10 pb-10 pt-6">
                 
                 {loading ? (
                     <div className="flex justify-center items-center h-full"><Loader2 className="w-10 h-10 animate-spin text-[#c8102e]" /></div>
                 ) : (
                     <>
-                        {/* TAB 1: ACCESS RULES */}
+                        {/* VIEW 1: ACCESS MATRIX CONFIGURATION */}
                         {activeTab === 'access' && (
                             <div className="animate-in fade-in duration-300 flex flex-col h-full flex-1 min-h-0">
                                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4 shrink-0">
@@ -385,7 +416,7 @@ export default function FramePolicies() {
                             </div>
                         )}
 
-                        {/* TAB 2: AI & CORE SYSTEM */}
+                        {/* VIEW 2: AI MACHINE LEARNING SENSITIVITY & CORE CONTROLS */}
                         {activeTab === 'ai' && (
                             <div className="animate-in fade-in duration-300 max-w-4xl overflow-y-auto pr-2 pb-8">
                                 <div className="mb-6">
@@ -394,7 +425,7 @@ export default function FramePolicies() {
                                 </div>
 
                                 <div className="grid grid-cols-1 gap-6">
-                                    {/* Card 1: AI Threshold */}
+                                    {/* Card 1: Machine Learning Evaluation Threshold */}
                                     <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
                                         <div className="flex items-start gap-4 mb-6">
                                             <div className="p-3 bg-indigo-50 text-indigo-600 rounded-lg"><BrainCircuit className="w-6 h-6" /></div>
@@ -424,7 +455,7 @@ export default function FramePolicies() {
                                         </div>
                                     </div>
 
-                                    {/* Card 2: General Security */}
+                                    {/* Card 2: Emergency Response Protocol */}
                                     <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
                                         <div className="flex items-start gap-4">
                                             <div className={cn("p-3 rounded-lg transition-colors", systemLockdown ? "bg-red-100 text-red-600" : "bg-gray-100 text-gray-600")}><Power className="w-6 h-6" /></div>
@@ -454,7 +485,7 @@ export default function FramePolicies() {
                             </div>
                         )}
 
-                        {/* TAB 3: ALERTS */}
+                        {/* VIEW 3: SYSTEM NOTIFICATION HANDLERS */}
                         {activeTab === 'alerts' && (
                             <div className="animate-in fade-in duration-300 overflow-y-auto pr-2 pb-8">
                                 <div className="mb-6">

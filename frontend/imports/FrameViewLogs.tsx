@@ -7,48 +7,64 @@ const API_URL = import.meta.env.VITE_API_URL || '';
 
 export default function FrameViewLogs() {
     const navigate = useNavigate();
+    
+    // State Management
     const [logs, setLogs] = useState<LogEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    // Filters
+    // Active Filters Configuration
     const [searchTerm, setSearchTerm] = useState('');
-    const [accessFilter, setAccessFilter] = useState('ALL'); // ALL, ALLOWED, DENIED
+    const [accessFilter, setAccessFilter] = useState('ALL'); // Accepts: ALL, ALLOWED, DENIED
 
     const getToken = () => localStorage.getItem('token');
 
-    // Fetch Logs
-    const fetchLogs = useCallback(async () => {
+    // Retrieves standard historical logs using AbortController to prevent race conditions
+    const fetchLogs = useCallback(async (signal?: AbortSignal) => {
         setLoading(true);
         const token = getToken();
         try {
             const response = await fetch(`${API_URL}/api/admin/logs`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: { 'Authorization': `Bearer ${token}` },
+                signal
             });
             if (!response.ok) {
                 const errText = await response.text();
                 throw new Error(`Error ${response.status}: ${errText}`);
             }
+            
             const data = await response.json();
-            setLogs(data);
+            
+            if (!signal?.aborted) {
+                setLogs(data);
+            }
         } catch (err: any) {
-            console.error("View Logs Error:", err);
-            setError(err.message);
+            if (err.name === 'AbortError') return;
+            if (!signal?.aborted) {
+                console.error("View Logs Error:", err);
+                setError(err.message);
+            }
         } finally {
-            setLoading(false);
+            if (!signal?.aborted) {
+                setLoading(false);
+            }
         }
     }, []);
 
+    // Initial architectural hook to execute fetch operation upon component mount
     useEffect(() => {
         document.title = "AIloQR - Historical Logs";
-        fetchLogs();
+        const controller = new AbortController();
+        fetchLogs(controller.signal);
+        
+        return () => controller.abort();
     }, [fetchLogs]);
 
-    // CORRECCIÓ 3: Protecció contra valors Null al filtre
+    // Resolves potential null reference exceptions during client-side filtering operations
     const filteredLogs = logs.filter(log => {
         const searchLower = searchTerm.toLowerCase();
         
-        // Assegurem que cap variable sigui 'null' abans de fer toLowerCase()
+        // Ensures variables are strictly strings before applying toLowerCase()
         const matchesSearch = (log.user_id || '').toLowerCase().includes(searchLower) || 
                               (log.area || '').toLowerCase().includes(searchLower) ||
                               (log.reason || '').toLowerCase().includes(searchLower);
@@ -60,7 +76,7 @@ export default function FrameViewLogs() {
         return matchesSearch && matchesAccess;
     });
 
-    // Client-side CSV Export Logic
+    // Offline dataset generator allowing external audit and ML analysis
     const handleDownloadFilteredCSV = () => {
         try {
             const headers = ['Time', 'User ID', 'Role', 'Area', 'Access Status', 'Reason', 'Is Threat', 'Is Anomaly'];
@@ -68,7 +84,7 @@ export default function FrameViewLogs() {
             csvRows.push(headers.join(';'));
             
             for (const log of filteredLogs) {
-                // CORRECCIÓ 3.1: Protecció contra valors Null a l'exportació
+                // Instantiates a robust null-safety protocol prior to standardizing rows
                 const row = [
                     log.access_time?.split('.')[0] || '',
                     log.user_id || 'Unknown',
@@ -111,7 +127,7 @@ export default function FrameViewLogs() {
     return (
         <div className="fixed inset-0 flex flex-col w-full bg-background overflow-hidden">
             
-            {/* Header */}
+            {/* Fixed Application Header */}
             <div className="shrink-0 bg-background pt-6 md:pt-8 w-full z-40">
                 <div className="w-full mx-auto px-4 sm:px-6 lg:px-10">
                     <div className="relative flex justify-center items-center h-12 md:h-14 mb-3">
@@ -127,10 +143,10 @@ export default function FrameViewLogs() {
                 </div>
             </div>
 
-            {/* Central Flex Zone */}
+            {/* Interactive Data Presentation Area */}
             <div className="flex-1 min-h-0 w-full flex flex-col gap-4 px-4 sm:px-6 lg:px-10 pb-6 pt-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 
-                {/* Toolbar */}
+                {/* Control Panel: Search & Advanced Filters */}
                 <div className="shrink-0 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
                     <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
                         <div className="relative w-full sm:w-72">
@@ -163,7 +179,7 @@ export default function FrameViewLogs() {
                     </button>
                 </div>
 
-                {/* THE REUSABLE LOG TABLE COMPONENT */}
+                {/* Integration of the abstract LogTable rendering component */}
                 <div className="flex-1 min-h-0 relative">
                     {error ? (
                         <div className="bg-white rounded-xl border border-gray-200 p-10 text-center text-red-500 font-medium">

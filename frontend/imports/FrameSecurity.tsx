@@ -3,13 +3,13 @@ import { useNavigate } from "react-router-dom";
 import { useWebSocket } from "../context/WebSocketContext";
 import { 
   Loader2, UserCircle, ArrowLeft, ShieldAlert, ShieldCheck, Lock,
-  Unlock, AlertTriangle, Activity, Search, CheckCircle, Sparkles, FileCheck
+  Unlock, AlertTriangle, Activity, Search, Sparkles, FileCheck
 } from "lucide-react";
 import { cn } from "../components/ui/utils";
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
-// --- Interfaces ---
+// --- TypeScript Interfaces ---
 interface SecurityIncident {
   id: string;
   severity: 'high' | 'medium' | 'low';
@@ -47,6 +47,7 @@ interface ActionButtonProps {
     icon?: React.ElementType;
 }
 
+// Renders standard action buttons across the security module
 function ActionButton({ onClick, children, variant = 'primary', isLoading = false, disabled = false, className = '', icon: Icon }: ActionButtonProps) {
     const baseClasses = "box-border cursor-pointer flex h-[50px] items-center justify-center rounded-[8px] w-full transition-colors font-medium text-lg md:text-xl";
     const variantClasses = {
@@ -55,6 +56,7 @@ function ActionButton({ onClick, children, variant = 'primary', isLoading = fals
         danger: "bg-red-600 hover:bg-red-700 text-white shadow-lg hover:shadow-xl" 
     };
     const isButtonDisabled = isLoading || disabled;
+    
     return (
         <button 
             onClick={onClick} 
@@ -75,6 +77,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
     return <h2 className="text-2xl md:text-3xl font-semibold text-black text-left">{children}</h2>;
 }
 
+// Modal component to confirm critical actions like system lockdown
 function LockdownModal({ isOpen, onClose, onConfirm, isLockingDown, isLoading }: any) {
     if (!isOpen) return null;
     return (
@@ -107,6 +110,7 @@ function LockdownModal({ isOpen, onClose, onConfirm, isLockingDown, isLoading }:
     );
 }
 
+// Toggle button to handle AI threat escalation and resolution
 function SecurityActionToggle({ status, isThreat, onClick, isLoading, isDisabled }: any) {
     const [showTooltip, setShowTooltip] = useState(false);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -118,6 +122,7 @@ function SecurityActionToggle({ status, isThreat, onClick, isLoading, isDisabled
         if (timerRef.current) clearTimeout(timerRef.current);
         timerRef.current = setTimeout(() => setShowTooltip(true), 600);
     };
+
     const handleMouseLeave = () => {
         if (timerRef.current) clearTimeout(timerRef.current);
         setShowTooltip(false);
@@ -156,6 +161,7 @@ function ReviewButton({ onClick, isLoading, isDisabled }: any) {
         if (timerRef.current) clearTimeout(timerRef.current);
         timerRef.current = setTimeout(() => setShowTooltip(true), 600);
     };
+
     const handleMouseLeave = () => {
         if (timerRef.current) clearTimeout(timerRef.current);
         setShowTooltip(false);
@@ -194,6 +200,8 @@ function BanIcon({ className }: { className?: string }) {
 // --- Main Component ---
 export default function FrameSecurity() {
   const navigate = useNavigate();
+  
+  // State management
   const [data, setData] = useState<SecurityData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -201,10 +209,14 @@ export default function FrameSecurity() {
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [lockdownLoading, setLockdownLoading] = useState(false);
   const [isLockdownModalOpen, setIsLockdownModalOpen] = useState(false);
+  
   const { socket } = useWebSocket();
 
-  useEffect(() => { document.title = "AIloQR - Security Center"; }, []);
+  useEffect(() => { 
+      document.title = "AIloQR - Security Center"; 
+  }, []);
 
+  // UI styling helpers based on system state
   const getSeverityColor = (severity: string) => {
     switch (severity) {
       case 'high': return 'text-red-600 bg-red-50 border-red-200';
@@ -240,7 +252,9 @@ export default function FrameSecurity() {
     navigate("/login");
   }, [navigate]);
 
-  const fetchSecurityData = useCallback(async (isBackgroundUpdate = false) => {
+  // Fetches security data from the API
+  // Uses AbortSignal to prevent updating state on unmounted components
+  const fetchSecurityData = useCallback(async (isBackgroundUpdate = false, signal?: AbortSignal) => {
     const token = getToken();
     if (!token) { handleLogout(); return; }
     if (!isBackgroundUpdate) setLoading(true); 
@@ -248,7 +262,8 @@ export default function FrameSecurity() {
     try {
         const response = await fetch(`${API_URL}/api/admin/security-data`, {
             headers: { 'Authorization': `Bearer ${token}` },
-            cache: 'no-store' 
+            cache: 'no-store',
+            signal
         });
 
         if (!response.ok) {
@@ -258,20 +273,38 @@ export default function FrameSecurity() {
         }
         
         const json: SecurityData = await response.json();
-        setData(json);
+        
+        if (!signal?.aborted) {
+            setData(json);
+        }
     } catch (err: any) {
-        console.error("Error fetching data:", err);
-        setError(err.message); 
+        if (err.name === 'AbortError') return;
+        if (!signal?.aborted) {
+            console.error("Error fetching data:", err);
+            setError(err.message); 
+        }
     } finally {
-        setLoading(false);
+        if (!signal?.aborted) {
+            setLoading(false);
+        }
     }
   }, [handleLogout]);
 
-  useEffect(() => { fetchSecurityData(false); }, [fetchSecurityData]);
+  // Initial data fetch with cleanup handler
+  useEffect(() => { 
+      const controller = new AbortController();
+      fetchSecurityData(false, controller.signal); 
+      
+      return () => {
+          controller.abort();
+      };
+  }, [fetchSecurityData]);
 
+  // WebSocket integration for real-time security alerts
   useEffect(() => {
     if (!socket) return;
     let isFetching = false;
+    
     const handleUpdate = async () => {
             if (isFetching) return; 
             isFetching = true;
@@ -289,6 +322,7 @@ export default function FrameSecurity() {
     };
   }, [socket, fetchSecurityData]);
 
+  // Loading animation handler
   useEffect(() => {
     if (!loading) return;
     const interval = setInterval(() => { setLoadingDots((prev) => (prev.length >= 3 ? "" : prev + ".")); }, 400);
@@ -297,33 +331,44 @@ export default function FrameSecurity() {
 
   const isGlobalLoading = actionLoadingId !== null || lockdownLoading;
 
+  // Escalates or resolves a security threat
   const handleToggleThreat = async (incident: SecurityIncident) => {
       if (isGlobalLoading) return;
       setActionLoadingId(incident.id);
       const token = getToken();
-      let action = incident.status === 'resolved' ? (incident.is_threat ? 'resolve' : 'escalate') : 'resolve';
+      const action = incident.status === 'resolved' ? (incident.is_threat ? 'resolve' : 'escalate') : 'resolve';
 
       try {
           await fetch(`${API_URL}/api/admin/log/${incident.id}/toggle-threat`, { 
-              method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) 
+              method: 'POST', 
+              headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, 
+              body: JSON.stringify({ action }) 
           });
           await new Promise(resolve => setTimeout(resolve, 300));
           await fetchSecurityData(true);
       } catch (error) {
           alert("Failed to update status.");
-      } finally { setActionLoadingId(null); }
+      } finally { 
+          setActionLoadingId(null); 
+      }
   };
 
+  // Marks an AI-flagged incident as reviewed
   const handleMarkReviewed = async (incident: SecurityIncident) => {
       if (isGlobalLoading) return;
       setActionLoadingId(incident.id);
       try {
-          await fetch(`${API_URL}/api/admin/log/${incident.id}/review`, { method: 'POST', headers: { 'Authorization': `Bearer ${getToken()}` } });
+          await fetch(`${API_URL}/api/admin/log/${incident.id}/review`, { 
+              method: 'POST', 
+              headers: { 'Authorization': `Bearer ${getToken()}` } 
+          });
           await new Promise(resolve => setTimeout(resolve, 300));
           await fetchSecurityData(true);
       } catch (error) {
           alert("Failed to mark as reviewed.");
-      } finally { setActionLoadingId(null); }
+      } finally { 
+          setActionLoadingId(null); 
+      }
   };
 
   const initiateLockdownToggle = () => {
@@ -331,6 +376,7 @@ export default function FrameSecurity() {
       setIsLockdownModalOpen(true);
   };
 
+  // Triggers the system lockdown emergency protocol
   const confirmLockdown = async () => {
       setLockdownLoading(true);
       try {
@@ -340,7 +386,9 @@ export default function FrameSecurity() {
           if (response.ok) {
               await new Promise(resolve => setTimeout(resolve, 500)); 
               await fetchSecurityData(true);
-          } else alert("Failed to toggle system lockdown.");
+          } else {
+              alert("Failed to toggle system lockdown.");
+          }
       } catch (error) {
           alert("Network error.");
       } finally {
@@ -365,7 +413,6 @@ export default function FrameSecurity() {
   }
 
   return (
-        // ESTRUCTURA FIXED (Idèntica a FramePolicies i FrameUsers)
         <div className="fixed inset-0 flex flex-col w-full bg-background overflow-hidden">
             
             <LockdownModal 
@@ -373,7 +420,7 @@ export default function FrameSecurity() {
                 isLockingDown={!data?.system_lockdown} isLoading={lockdownLoading}
             />
 
-            {/* Header Fixat */}
+            {/* Fixed Header */}
             <div className="shrink-0 bg-background pt-6 md:pt-8 w-full z-40">
                 <div className="w-full mx-auto px-4 sm:px-6 lg:px-10">
                     <div className="relative flex justify-center items-center h-12 md:h-14 mb-3">
@@ -391,7 +438,7 @@ export default function FrameSecurity() {
                 </div>
             </div>
 
-            {/* Contingut Scrollable amb l'animació "slide-in-from-bottom" */}
+            {/* Scrollable Content Area */}
             <div className="flex-1 min-h-0 w-full flex flex-col gap-10 px-4 sm:px-6 lg:px-10 pb-12 pt-6 overflow-y-auto">
 
                 {loading && !data ? (
@@ -404,6 +451,7 @@ export default function FrameSecurity() {
                 ) : (    
                     <div className="w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
 
+                        {/* Overview Header */}
                         <div className="w-full mb-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
                             <SectionTitle>Security Overview</SectionTitle>
                             {data?.system_lockdown && (
@@ -417,6 +465,7 @@ export default function FrameSecurity() {
                             )}
                         </div>
 
+                        {/* Key Metrics Cards */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
                             <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm flex items-center justify-between">
                                 <div>
@@ -445,6 +494,7 @@ export default function FrameSecurity() {
                             </div>
                         </div>
 
+                        {/* Recent Incidents List */}
                         <div className="w-full mb-12">
                             <h3 className="text-xl md:text-2xl font-semibold text-gray-800 mb-4">Recent Activity & Alerts</h3>
                             <div className="bg-white border border-gray-200 rounded-xl overflow-visible shadow-sm">
@@ -485,6 +535,7 @@ export default function FrameSecurity() {
                             </div>
                         </div>
 
+                        {/* Navigation and Actions */}
                         <div className="w-full">
                             <h3 className="text-xl md:text-2xl font-semibold text-gray-800 mb-4">Security Actions</h3>
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">

@@ -8,7 +8,7 @@ import { cn } from "../components/ui/utils";
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
-// --- Interfaces ---
+// --- TypeScript Interfaces ---
 interface SecurityIncident {
   id: string;
   severity: 'high' | 'medium' | 'low';
@@ -22,6 +22,7 @@ interface SecurityIncident {
 }
 
 // --- Security Action Buttons ---
+// Handles the visual representation and state toggling for security threats
 function SecurityActionToggle({ status, isThreat, onClick, isLoading, isDisabled }: any) {
     const isPending = status === 'pending';
     return (
@@ -43,6 +44,7 @@ function SecurityActionToggle({ status, isThreat, onClick, isLoading, isDisabled
     );
 }
 
+// Button to mark an AI-flagged or pending threat as reviewed and archived
 function ReviewButton({ onClick, isLoading, isDisabled }: any) {
     return (
         <button
@@ -62,51 +64,69 @@ function ReviewButton({ onClick, isLoading, isDisabled }: any) {
 // --- Main Component ---
 export default function FrameAuditLogs() {
     const navigate = useNavigate();
+    
+    // State Management
     const [incidents, setIncidents] = useState<SecurityIncident[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
     
-    // Toast notification state
+    // User Feedback State
     const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-    // Filters state
+    // Filter Parameters
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('ALL');
 
     const getToken = () => localStorage.getItem('token');
 
-    // Global loading state to disable interactions when an action is processing
+    // Prevents conflicting actions while an asynchronous API call is being processed
     const isGlobalLoading = actionLoadingId !== null;
 
-    // Fetch logs from backend
-    const fetchAuditLogs = useCallback(async () => {
+    // Fetches security logs, utilizing AbortController to manage component lifecycle safety
+    const fetchAuditLogs = useCallback(async (signal?: AbortSignal) => {
         setLoading(true);
         const token = getToken();
         try {
             const response = await fetch(`${API_URL}/api/admin/audit-logs`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: { 'Authorization': `Bearer ${token}` },
+                signal
             });
+            
             if (!response.ok) {
                 const errText = await response.text();
                 throw new Error(`Error ${response.status}: ${errText}`);
             }
+            
             const data = await response.json();
-            setIncidents(data);
+            
+            // Only update state if the component is still mounted
+            if (!signal?.aborted) {
+                setIncidents(data);
+            }
         } catch (err: any) {
-            console.error("Full Audit Logs Error:", err);
-            setError(err.message);
+            if (err.name === 'AbortError') return;
+            if (!signal?.aborted) {
+                console.error("Full Audit Logs Error:", err);
+                setError(err.message);
+            }
         } finally {
-            setLoading(false);
+            if (!signal?.aborted) {
+                setLoading(false);
+            }
         }
     }, []);
 
+    // Initial load hook with cleanup
     useEffect(() => {
         document.title = "AIloQR - Audit Logs";
-        fetchAuditLogs();
+        const controller = new AbortController();
+        fetchAuditLogs(controller.signal);
+        
+        return () => controller.abort();
     }, [fetchAuditLogs]);
 
-    // Filtering logic
+    // Client-side array filtering for efficient search functionality
     const filteredIncidents = incidents.filter(incident => {
         const matchesSearch = incident.source_id.toLowerCase().includes(searchTerm.toLowerCase()) || 
                               incident.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -117,7 +137,7 @@ export default function FrameAuditLogs() {
         return matchesSearch && matchesStatus;
     });
 
-    // Click to Copy with Toast logic
+    // Utility function to seamlessly copy IDs to the system clipboard
     const copyToClipboard = (text: string) => {
         if (!text || isGlobalLoading) return;
         navigator.clipboard.writeText(text);
@@ -129,7 +149,7 @@ export default function FrameAuditLogs() {
         }, 2500);
     };
 
-    // Client-side CSV Export Logic
+    // Client-side CSV generation to extract dataset for offline AI/ML analysis
     const handleDownloadFilteredCSV = () => {
         if (isGlobalLoading) return;
         try {
@@ -150,6 +170,7 @@ export default function FrameAuditLogs() {
                     incident.is_threat ? 'Yes' : 'No'
                 ];
                 
+                // Escape sequence for standard CSV formatting to prevent injection or breakage
                 const escapedRow = row.map(val => {
                     const strVal = String(val || '');
                     return `"${strVal.replace(/"/g, '""')}"`;
@@ -179,11 +200,14 @@ export default function FrameAuditLogs() {
     };
 
     // --- Database Actions ---
+    
+    // Adjusts the threat level of an individual security incident
     const handleToggleThreat = async (incident: SecurityIncident) => {
         if (isGlobalLoading) return;
         setActionLoadingId(incident.id);
         const token = getToken();
-        let action = incident.status === 'resolved' ? (incident.is_threat ? 'resolve' : 'escalate') : 'resolve';
+        const action = incident.status === 'resolved' ? (incident.is_threat ? 'resolve' : 'escalate') : 'resolve';
+        
         try {
             await fetch(`${API_URL}/api/admin/log/${incident.id}/toggle-threat`, { 
                 method: 'POST', 
@@ -193,9 +217,12 @@ export default function FrameAuditLogs() {
             await fetchAuditLogs();
         } catch (error) {
             alert("Failed to update status.");
-        } finally { setActionLoadingId(null); }
+        } finally { 
+            setActionLoadingId(null); 
+        }
     };
 
+    // Archives the log entry once administrative review is complete
     const handleMarkReviewed = async (incident: SecurityIncident) => {
         if (isGlobalLoading) return;
         setActionLoadingId(incident.id);
@@ -207,9 +234,12 @@ export default function FrameAuditLogs() {
             await fetchAuditLogs();
         } catch (error) {
             alert("Failed to mark as reviewed.");
-        } finally { setActionLoadingId(null); }
+        } finally { 
+            setActionLoadingId(null); 
+        }
     };
 
+    // UX helper for severity coloration
     const getSeverityColor = (severity: string) => {
         switch (severity) {
           case 'high': return 'text-red-600 bg-red-50 border-red-200';
@@ -220,10 +250,9 @@ export default function FrameAuditLogs() {
     };
 
     return (
-        // MAIN CONTAINER: fixed inset-0 completely locks the screen from scrolling
         <div className="fixed inset-0 flex flex-col w-full bg-background overflow-hidden">
             
-            {/* Header (No scroll) */}
+            {/* Fixed Application Header */}
             <div className="shrink-0 bg-background pt-6 md:pt-8 w-full z-40">
                 <div className="w-full mx-auto px-4 sm:px-6 lg:px-10">
                     <div className="relative flex justify-center items-center h-12 md:h-14 mb-3">
@@ -253,13 +282,12 @@ export default function FrameAuditLogs() {
                 </div>
             </div>
 
-            {/* Central Flex Zone */}
+            {/* Central Content Container */}
             <div className="flex-1 min-h-0 w-full flex flex-col gap-4 px-4 sm:px-6 lg:px-10 pb-6 pt-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 
-                {/* Toolbar */}
+                {/* Search and Filters Bar */}
                 <div className="shrink-0 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
                     <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-                        {/* Search Input */}
                         <div className="relative w-full sm:w-72">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
                             <input 
@@ -302,7 +330,7 @@ export default function FrameAuditLogs() {
                     </button>
                 </div>
 
-                {/* LIST CONTAINER: overflow-y-auto restricted to this div */}
+                {/* Audit Logs List View */}
                 <div className="flex-1 min-h-0 overflow-y-auto bg-white rounded-xl border border-gray-200 shadow-sm relative">
                     {loading ? (
                         <div className="flex justify-center items-center h-full min-h-[200px]"><Loader2 className="w-10 h-10 animate-spin text-[#c8102e]" /></div>
@@ -374,7 +402,7 @@ export default function FrameAuditLogs() {
                 </div>
             </div>
 
-            {/* FLOATING TOAST NOTIFICATION */}
+            {/* Application Feedback Component */}
             {toastMessage && (
                 <div className="fixed bottom-8 right-8 z-50 bg-gray-900 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4 duration-300">
                     <CheckCircle className="w-5 h-5 text-green-400" />
