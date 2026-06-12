@@ -11,7 +11,7 @@ import jwt
 from QR_generation_validation import generate_qr, verify_qr
 from security_analyzer import predict_anomaly, send_anomaly_alert, load_or_train_model, send_access_denied_alert, get_admin_emails, start_retraining_scheduler, get_anomaly_threshold
 import uuid
-from database import save_user, check_password, get_db_connection, get_user_by_email, get_all_roles
+from database import save_user, check_password, get_db_connection, get_user_by_email, get_all_roles, initialize_database
 import base64
 from io import StringIO, BytesIO
 from PIL import Image
@@ -27,16 +27,23 @@ from flask_socketio import SocketIO
 import pytz
 import json
 
+# =============================================================================
+# === APPLICATION CONFIGURATION & INITIALIZATION ===
+# =============================================================================
+
 app = Flask(__name__)
 
+# Configure CORS to allow frontend communication with credentials
 CORS(app, supports_credentials=True) 
 
+# Security configurations for session cookies
 app.config.update(
     SESSION_COOKIE_SECURE=True,
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax'
 )
 
+# Load environment keys
 app.secret_key = os.getenv("SECRET_KEY")
 ADMIN_REGISTRATION_KEY = os.getenv("ADMIN_KEY")
 SIGNATURE_KEY = os.getenv("SIGNATURE_KEY").encode('utf-8')
@@ -44,20 +51,28 @@ SIGNATURE_KEY = os.getenv("SIGNATURE_KEY").encode('utf-8')
 SMTP_EMAIL = os.getenv("SMTP_EMAIL")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 
-# Socket initialization
+# Initialize WebSocket support (gevent async mode)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
 
 def no_cache(response):
+    """
+    Appends strict no-cache headers to a Flask response to prevent 
+    stale data rendering on the client side.
+    """
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
     return response
 
-
-#=================================================
+# =============================================================================
 # === AUTHENTICATION DECORATORS ===
-#=================================================
+# =============================================================================
+
 def token_required(f):
+    """
+    Decorator to ensure a valid JWT token is present in the request headers.
+    Injects user_id and role into the protected endpoint parameters.
+    """
     @wraps(f)
     def decorated(*args, **kwargs):
         token = None
@@ -85,7 +100,12 @@ def token_required(f):
         return f(*args, **kwargs)
     return decorated
 
+
 def admin_required(f):
+    """
+    Decorator to enforce Admin-only access.
+    Must be chained after @token_required.
+    """
     @wraps(f)
     def decorated(*args, **kwargs):
         if 'role' not in kwargs or kwargs['role'] != 'Admin':
@@ -93,11 +113,12 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated
 
+# =============================================================================
+# === DATA FETCHING HELPER FUNCTIONS ===
+# =============================================================================
 
-#=================================================
-# === DATA FETCHING FUNCTIONS ===
-#=================================================
 def get_last_3_logs():
+    """Retrieves the 3 most recent access logs for the dashboard preview."""
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
@@ -111,7 +132,9 @@ def get_last_3_logs():
     conn.close()
     return logs
 
+
 def get_all_logs():
+    """Retrieves all standard access logs ordered by recency."""
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
@@ -124,7 +147,9 @@ def get_all_logs():
     conn.close()
     return logs
 
+
 def get_last_3_users():
+    """Retrieves the 3 most recently registered users for the dashboard preview."""
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute('SELECT name, email, role, registered_at FROM users ORDER BY registered_at DESC LIMIT 3')
@@ -133,7 +158,9 @@ def get_last_3_users():
     conn.close()
     return users
 
+
 def get_all_users():
+    """Retrieves all registered users ordered by registration date."""
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute('SELECT name, email, role, registered_at FROM users ORDER BY registered_at DESC')
@@ -142,19 +169,25 @@ def get_all_users():
     conn.close()
     return users
 
-
-#=================================================
+# =============================================================================
 # === PUBLIC API ENDPOINTS ===
-#=================================================
+# =============================================================================
+
 @app.route('/api/roles', methods=['GET'])
 def api_get_roles():
+    """Returns a list of all available roles dynamically fetched from the database."""
     try:
         roles = get_all_roles()
         return jsonify(roles), 200
     except Exception as e:
         return jsonify({'message': f'Internal server error: {e}'}), 500
     
+
 def validate_password(password):
+    """
+    Validates password strength requirements via RegEx.
+    Returns None if valid, or a descriptive string if invalid.
+    """
     if len(password) < 8:
         return "Password must be at least 8 characters long."
     if not re.search(r"[A-Z]", password):
@@ -167,8 +200,13 @@ def validate_password(password):
         return "Password must contain at least one special character (!@#$%^&*)."
     return None
 
+
 @app.route('/api/register', methods=['POST'])
 def api_register():
+    """
+    Handles new user registration. Validates credentials, checks admin keys,
+    generates the initial dynamic QR code, and issues a JWT token.
+    """
     data = request.get_json()
     name = data.get('name')
     email = data.get('email')
@@ -215,8 +253,12 @@ def api_register():
     except Exception as e:
         return jsonify({'message': f'Internal server error: {e}'}), 500
 
+
 @app.route('/api/login', methods=['POST'])
 def api_login():
+    """
+    Authenticates existing users and issues a new JWT token for session management.
+    """
     data = request.get_json()
     email = data.get('email')
     password = data.get('password')
@@ -241,10 +283,16 @@ def api_login():
     except Exception as e:
         return jsonify({'message': f'Error in token generation: {e}'}), 500
     
+# =============================================================================
+# === EDGE DEVICE (HARDWARE) ENDPOINTS ===
+# =============================================================================
 
-# EDGE DEVICE ENDPOINTS
 @app.route('/api/access/scan', methods=['POST'])
 def api_access_scan():
+    """
+    Endpoint intended for IoT Edge Devices (e.g., Raspberry Pi scanners).
+    Validates incoming QR code payloads and triggers background AI assessment.
+    """
     data = request.get_json()
     
     if not data or 'qr_data' not in data or 'area' not in data:
@@ -262,21 +310,24 @@ def api_access_scan():
         "role": validation_result['role']
     }
 
+    # Delegate the database writing and AI analysis to a background task
     socketio.start_background_task(background_access_processing, validation_result, target_area)
 
     return jsonify(response_data), 200
     
-
-#=================================================
-# === PROTECTED API ENDPOINTS (USER) ===
-#=================================================
+# =============================================================================
+# === PROTECTED API ENDPOINTS (USER LEVEL) ===
+# =============================================================================
 
 def get_user_profile_data(target_user_id):
+    """
+    Helper function to aggregate user profile details and their 
+    historical access logs. Limited to 500 logs to optimize performance.
+    """
     try:
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # Obtain personal user data
         cur.execute("""
             SELECT id, name, email, role, registered_at, is_blocked 
             FROM users WHERE id = %s
@@ -286,7 +337,6 @@ def get_user_profile_data(target_user_id):
         if not user_data:
             return jsonify({'message': 'User not found'}), 404
             
-        # Obtain exclusively the logs for this user (maximum 500 per history for eficiency)
         cur.execute("""
             SELECT id, user_id, role, area, access_time, entry_allowed, reason, error_code, risk_score, is_anomaly, is_threat 
             FROM logs 
@@ -299,7 +349,6 @@ def get_user_profile_data(target_user_id):
         cur.close()
         conn.close()
         
-        # Format logs for response
         logs_list = []
         for l in logs:
             logs_list.append({
@@ -332,16 +381,21 @@ def get_user_profile_data(target_user_id):
         print(f"Error fetching user profile: {e}")
         return jsonify({'message': f'Error fetching profile: {str(e)}'}), 500
 
-# Endpoint for regular users: "My Profile" (users can access only their own profile)
+
 @app.route('/api/profile', methods=['GET'])
 @token_required
 def api_get_my_profile(user_id, role):
+    """Returns the profile data exclusively for the requesting user."""
     return get_user_profile_data(user_id)
 
 
 @app.route('/api/dashboard-data', methods=['GET'])
 @token_required
 def api_dashboard_data(user_id, role):
+    """
+    Aggregates required data for the User Dashboard, including their current
+    QR code payload and the remaining time until its expiration.
+    """
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -361,6 +415,7 @@ def api_dashboard_data(user_id, role):
         if remaining < 0:
             remaining = 0
 
+        # Process binary image into Base64 for web rendering
         try:
             image = Image.open(BytesIO(user['qr_image']))
             buffer = BytesIO()
@@ -411,6 +466,10 @@ def api_dashboard_data(user_id, role):
 @app.route('/api/refresh-qr', methods=['GET'])
 @token_required
 def api_refresh_qr(user_id, role):
+    """
+    Generates a new signed QR code payload, updates the database timestamp,
+    and returns the Base64 representation to the client.
+    """
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -434,17 +493,15 @@ def api_refresh_qr(user_id, role):
            conn.close()
         return jsonify({'message': f'Internal server error: {str(e)}'}), 500
 
+# =============================================================================
+# === PROTECTED API ENDPOINTS (ADMIN LEVEL) ===
+# =============================================================================
 
-#=================================================
-# === PROTECTED API ENDPOINTS (ADMIN) ===
-#=================================================
-
-# Endpoint for admins: "Inspect User" (Only Admins)
 @app.route('/api/admin/user/<target_user_id>', methods=['GET'])
 @token_required
 @admin_required
 def api_get_user_profile(user_id, role, target_user_id):
-    # Passa el target_user_id de la URL
+    """Allows administrators to inspect the full profile and logs of any user."""
     return get_user_profile_data(target_user_id)
 
 
@@ -452,6 +509,7 @@ def api_get_user_profile(user_id, role, target_user_id):
 @token_required
 @admin_required
 def api_admin_dashboard(user_id, role):
+    """Fetches high-level aggregated data for the main Admin Portal."""
     try:
         last_3_logs = get_last_3_logs()
         last_3_users = get_last_3_users()
@@ -462,6 +520,7 @@ def api_admin_dashboard(user_id, role):
         user = cur.fetchone()
         cur.close()
         conn.close()
+        
         admin_name = user['name'] if user else "Admin"
 
         return jsonify({
@@ -478,6 +537,7 @@ def api_admin_dashboard(user_id, role):
 @token_required
 @admin_required
 def api_get_users_list(user_id, role):
+    """Returns a lightweight list of all users for the Management Data Grid."""
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -510,37 +570,36 @@ def api_get_users_list(user_id, role):
 @token_required
 @admin_required
 def download_csv(user_id, role, export_type):
+    """
+    Generates and returns a CSV file containing either user data or system logs.
+    Utilizes UTF-8 encoding with a BOM for native Excel compatibility.
+    """
     try:
         conn = get_db_connection()
         cur = conn.cursor()
         
         output = StringIO()
-        # BOM for UTF-8 to ensure Excel compatibility and ; as delimiter for better compatibility with European versions
         output.write('\ufeff')
         writer = csv.writer(output, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
         
         if export_type == 'users':
             cur.execute("SELECT id, name, email, role, registered_at, is_blocked FROM users ORDER BY registered_at DESC")
             users = cur.fetchall()
-            
             writer.writerow(['ID', 'Name', 'Email', 'Role', 'Registered At', 'Is Blocked'])
             
             for u in users:
                 row = list(u.values()) if hasattr(u, 'values') else list(u)
                 writer.writerow(row)
-                
             filename = "users.csv"
             
         elif export_type == 'logs':
             cur.execute("SELECT user_id, role, area, access_time, entry_allowed, reason, risk_score, is_anomaly, is_threat FROM logs ORDER BY access_time DESC")
             logs = cur.fetchall()
-            
             writer.writerow(['User ID', 'Role', 'Area', 'Time', 'Allowed', 'Reason', 'Risk Score', 'Is Anomaly', 'Is Threat'])
             
             for l in logs:
                 row = list(l.values()) if hasattr(l, 'values') else list(l)
                 writer.writerow(row)
-                
             filename = "logs.csv"
             
         else:
@@ -558,52 +617,15 @@ def download_csv(user_id, role, export_type):
     except Exception as e:
         return jsonify({'message': f"Internal server error: {str(e)}"}), 500
 
-
-# --- SECURITY ENDPOINTS ---
-@app.route('/api/admin/logs/suspicious')
-def get_suspicious_logs():
-    threshold = get_anomaly_threshold()
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT id, user_id, role, area, access_time, risk_score, reason 
-        FROM logs 
-        WHERE entry_allowed IS TRUE AND risk_score < %s
-        ORDER BY access_time DESC LIMIT 50
-    """, (threshold,))
-    logs = cur.fetchall()
-    cur.close()
-    conn.close()
-    
-    data = [{'id': r[0], 'user': r[1], 'role': r[2], 'area': r[3], 
-             'time': str(r[4]), 'score': r[5], 'reason': r[6]} for r in logs]
-    return jsonify(data)
-
-@app.route('/api/admin/logs/denied')
-def get_denied_logs():
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT id, user_id, role, area, access_time, reason 
-        FROM logs 
-        WHERE entry_allowed IS FALSE
-        ORDER BY access_time DESC LIMIT 50
-    """)
-    logs = cur.fetchall()
-    cur.close()
-    conn.close()
-    
-    data = [{'id': r[0], 'user': r[1], 'role': r[2], 'area': r[3], 
-             'time': str(r[4]), 'reason': r[5]} for r in logs]
-    return jsonify(data)
-
-
-# --- FIREWALL & POLICIES ENDPOINTS ---
+# =============================================================================
+# === FIREWALL & POLICIES ENDPOINTS ===
+# =============================================================================
 
 @app.route('/api/admin/rules/access', methods=['GET', 'POST', 'PUT', 'DELETE'])
 @token_required
 @admin_required
 def manage_access_rules(user_id, role):
+    """CRUD operations for Role-Based Access Control (RBAC) rules."""
     conn = get_db_connection()
     cur = conn.cursor()
     
@@ -627,7 +649,6 @@ def manage_access_rules(user_id, role):
     
     if request.method == 'POST':
         data = request.json
-        # Default values for optional fields
         days = data.get('days', '0,1,2,3,4,5,6')
         start_time = data.get('start_time', '00:00:00')
         end_time = data.get('end_time', '23:59:59')
@@ -643,7 +664,6 @@ def manage_access_rules(user_id, role):
         return jsonify({'status': 'success'})
 
     if request.method == 'PUT':
-        # To activate/deactivate a rule, we only need the ID and the new active status
         data = request.json
         rule_id = data.get('id')
         is_active = data.get('active')
@@ -666,6 +686,7 @@ def manage_access_rules(user_id, role):
 @token_required
 @admin_required
 def manage_system_config(user_id, role):
+    """Reads and updates global system configurations (e.g., AI Threshold)."""
     conn = get_db_connection()
     cur = conn.cursor()
     
@@ -696,6 +717,7 @@ def manage_system_config(user_id, role):
 @token_required
 @admin_required
 def manage_alert_rules(user_id, role):
+    """CRUD operations for targeted email alert triggers."""
     conn = get_db_connection()
     cur = conn.cursor()
     
@@ -724,12 +746,18 @@ def manage_alert_rules(user_id, role):
         conn.close()
         return jsonify({'status': 'deleted'})
 
-# -----------------------------------------------
+# =============================================================================
+# === INCIDENT MANAGEMENT ACTIONS ===
+# =============================================================================
 
 @app.route('/api/admin/log/<int:log_id>/toggle-threat', methods=['POST'])
 @token_required
 @admin_required
 def toggle_threat_status(user_id, role, log_id):
+    """
+    Escalates or resolves a security incident. Clusters related repetitive 
+    logs and applies the status change to the entire incident cluster simultaneously.
+    """
     try:
         req_data = request.get_json()
         action = req_data.get('action')
@@ -783,10 +811,15 @@ def toggle_threat_status(user_id, role, log_id):
     except Exception as e:
         return jsonify({'message': f'Error toggling status: {str(e)}'}), 500
 
+
 @app.route('/api/admin/log/<int:log_id>/review', methods=['POST'])
 @token_required
 @admin_required
 def toggle_review_status(user_id, role, log_id):
+    """
+    Marks a clustered security incident as reviewed/acknowledged without 
+    necessarily changing its threat status.
+    """
     try:
         conn = get_db_connection()
         related_ids = find_cluster_ids_for_log(conn, log_id)
@@ -817,15 +850,11 @@ def toggle_review_status(user_id, role, log_id):
 @token_required
 @admin_required
 def api_toggle_user_block(user_id, role, target_user_id):
-    """
-    Inverts the block status of a user.
-    Only accessible by admins.
-    """
+    """Inverts the physical access restriction (block) for a specific user account."""
     try:
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # Check that the user exists and get current block status
         cur.execute("SELECT is_blocked, name FROM users WHERE id = %s", (target_user_id,))
         target_user = cur.fetchone()
         
@@ -837,13 +866,10 @@ def api_toggle_user_block(user_id, role, target_user_id):
         current_status = target_user['is_blocked'] if isinstance(target_user, dict) or hasattr(target_user, 'keys') else target_user[0]
         user_name = target_user['name'] if isinstance(target_user, dict) or hasattr(target_user, 'keys') else target_user[1]
         
-        # Invert the block status
         new_status = not current_status
         
-        # Update the database
         cur.execute("UPDATE users SET is_blocked = %s WHERE id = %s", (new_status, target_user_id))
         conn.commit()
-        
         cur.close()
         conn.close()
         
@@ -863,6 +889,10 @@ def api_toggle_user_block(user_id, role, target_user_id):
 @token_required
 @admin_required
 def toggle_system_lockdown(user_id, role):
+    """
+    Activates or deactivates the Global System Lockdown mode.
+    Triggers critical notification emails to all administrators.
+    """
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -900,6 +930,9 @@ def toggle_system_lockdown(user_id, role):
     except Exception as e:
         return jsonify({'message': f'Error toggling lockdown: {str(e)}'}), 500
     
+# =============================================================================
+# === SECURITY CENTER & LOG AGGREGATION ===
+# =============================================================================
 
 try:
     SESSION_TIMEOUT_MINUTES = int(os.getenv('SESSION_TIMEOUT_MINUTES', 10))
@@ -911,9 +944,15 @@ RISK_SCORES = json.loads(os.getenv('RISK_SCORES_JSON', '{}'))
 @token_required
 @admin_required
 def api_security_dashboard_data(user_id, role):
+    """
+    Compiles the main Security Center dashboard data.
+    Implements log clustering: groups repetitive rapid access attempts from the same 
+    user into single actionable 'Incidents' based on a temporal threshold.
+    """
     try:
         conn = get_db_connection()
         
+        # Housekeeping logic: Resolve old low-severity AI flags
         auto_review_old_logs(conn)
         
         cur = conn.cursor()
@@ -932,6 +971,7 @@ def api_security_dashboard_data(user_id, role):
         row = cur.fetchone()
         blocked_24h = row['blocked'] if row else 0
         
+        # Extract meaningful incidents (Denials, AI Anomalies, or Active Threats)
         cur.execute("""
             SELECT id, user_id, role, area, access_time, entry_allowed, reason, error_code, is_threat, is_reviewed, is_anomaly, risk_score 
             FROM logs 
@@ -958,6 +998,7 @@ def api_security_dashboard_data(user_id, role):
                      
                 cleaned_logs.append(d_log)
 
+            # Clustering logic to prevent interface flooding
             current_cluster = {
                 'logs': [dict(cleaned_logs[0])],
                 'user_id': cleaned_logs[0]['user_id'],
@@ -998,6 +1039,7 @@ def api_security_dashboard_data(user_id, role):
         active_threats_set = set()
         recent_incidents_response = []
         
+        # Severity evaluation for grouped incidents
         for incident in incidents:
             logs_in_group = incident['logs']
             count = len(logs_in_group)
@@ -1020,23 +1062,19 @@ def api_security_dashboard_data(user_id, role):
                 else:
                     severity = "low"
                     base_score = 2
-
             else:
-            
                 base_score = RISK_SCORES.get(error_code, 1)
-                
                 severity = 'low'
                 if base_score >= 10: 
                     severity = 'high'
                 elif base_score >= 3: 
                     severity = 'medium'
                 
+                # Escalation logic based on repetition density
                 if count >= 3 and severity == 'low':
                     severity = 'medium'
                 if count >= 5:
                     severity = 'high'
-
-            
 
             db_threat_flag = any(l.get('is_threat') for l in logs_in_group)
             db_anomaly_flag = any(l.get('is_anomaly') for l in logs_in_group)
@@ -1101,11 +1139,14 @@ def api_security_dashboard_data(user_id, role):
 @token_required
 @admin_required
 def api_get_audit_logs(user_id, role):
+    """
+    Fetches the comprehensive list of security incidents using the same
+    temporal clustering logic as the Security Center, but spanning a 30-day window.
+    """
     try:
         conn = get_db_connection()
         cur = conn.cursor()
 
-        # Incidents from the last 30 days or any unresolved threats/anomalies regardless of time
         thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
 
         cur.execute("""
@@ -1236,15 +1277,16 @@ def api_get_audit_logs(user_id, role):
         print(f"Error fetching audit logs: {e}")
         return jsonify({'message': f'Internal Server Error: {str(e)}'}), 500
 
+
 @app.route('/api/admin/logs', methods=['GET'])
 @token_required
 @admin_required
 def api_get_all_logs(user_id, role):
+    """Retrieves an unclustered, raw list of the latest 2000 access events."""
     try:
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # Limit to last 2000 logs for performance, can be adjusted as needed
         cur.execute("""
             SELECT id, user_id, role, area, access_time, entry_allowed, reason, error_code, risk_score, is_anomaly, is_threat 
             FROM logs 
@@ -1277,11 +1319,15 @@ def api_get_all_logs(user_id, role):
         print(f"Error fetching all logs: {e}")
         return jsonify({'message': f'Error fetching logs: {str(e)}'}), 500
     
+# =============================================================================
+# === INTERNAL LOGIC & HELPER FUNCTIONS ===
+# =============================================================================
 
-#=================================================
-# === HELPER FUNCTIONS ===
-#=================================================
 def check_should_notify_hard_rule(qr_data, target_area):
+    """
+    Evaluates a rejected access event against the active alert rules database
+    to determine if a notification email should be dispatched.
+    """
     if qr_data['valid']:
         return False
 
@@ -1311,10 +1357,11 @@ def check_should_notify_hard_rule(qr_data, target_area):
 
     return should_notify
 
+
 def evaluate_ai_severity(risk_score):
     """
-    Evaluates the severity of an AI-detected anomaly based on its risk score and a predefined threshold.
-    The function categorizes anomalies into "CRITICAL", "Medium", or "Low"
+    Categorizes the severity of an AI-detected anomaly based on its numerical
+    deviation distance from the database-configured dynamic threshold.
     """
     try:
         threshold = get_anomaly_threshold()
@@ -1332,7 +1379,14 @@ def evaluate_ai_severity(risk_score):
         
     return severity
 
+
 def background_access_processing(qr_data, target_area):
+    """
+    Asynchronous task triggered by physical access scans.
+    Evaluates AI anomaly scores, verifies structural rule sets, stores the 
+    resulting log entity, emits WebSocket events for real-time interface rendering,
+    and dispatches potential email notifications via SMTP.
+    """
     risk_score = 0.0
     is_anomaly = False
     is_threat = False
@@ -1353,9 +1407,7 @@ def background_access_processing(qr_data, target_area):
 
     if qr_data['valid']:
         try:
-            # Unpack the 3 variables returned by predict_anomaly
             risk_score, is_anomaly, ai_explanation = predict_anomaly(log_entry)
-
             log_entry['ai_explanation'] = ai_explanation if is_anomaly else None
 
             if is_anomaly:
@@ -1363,7 +1415,6 @@ def background_access_processing(qr_data, target_area):
                 is_threat = True
                 print(f"[AI] ANOMALY DETECTED. Score: {risk_score:.4f} | Severity: {severity}")
                 
-                # Action according to severity
                 if severity in ["Medium", "CRITICAL"]:
                     should_send_anomaly_alert = True
                     log_entry['reason'] = f"AI Anomaly ({severity})"
@@ -1420,7 +1471,13 @@ def background_access_processing(qr_data, target_area):
     if should_send_hard_rule_alert:
         socketio.start_background_task(send_access_denied_alert, log_entry)
 
+
 def find_cluster_ids_for_log(conn, target_log_id):
+    """
+    Groups logically related access events to process status updates uniformly.
+    A cluster implies same user, identical error code, occurring within the
+    defined temporal SESSION_TIMEOUT window.
+    """
     cur = conn.cursor()
     cur.execute("SELECT id, user_id, error_code, is_anomaly, access_time FROM logs WHERE id = %s", (target_log_id,))
     target = cur.fetchone()
@@ -1503,11 +1560,15 @@ def find_cluster_ids_for_log(conn, target_log_id):
 
     return target_cluster_ids
 
+
 def auto_review_old_logs(conn):
+    """
+    Automated housekeeping procedure. Discards low-severity AI flags older 
+    than 24 hours to maintain dashboard usability and relevancy.
+    """
     try:
         cur = conn.cursor()
         
-        # Logs older than 24h
         yesterday_obj = datetime.now() - timedelta(days=1)
         yesterday_str = yesterday_obj.strftime("%Y-%m-%d %H:%M:%S")
         
@@ -1516,10 +1577,8 @@ def auto_review_old_logs(conn):
         except ValueError:
             threshold = -0.025
             
-        # Scores classified as "Low" severity anomalies
         low_severity_bound = threshold - 0.04 
         
-        # Update logs flagged by AI as low-severity anomalies that are older than 24h to reviewed
         cur.execute("""
             UPDATE logs 
             SET is_reviewed = TRUE 
@@ -1533,12 +1592,13 @@ def auto_review_old_logs(conn):
         conn.commit()
         cur.close()
     except Exception as e:
-        pass # Silently pass automated housekeeping
+        pass
+
 
 def send_lockdown_email(active):
     """
-    Sends a formatted HTML email to ALL administrators when the system 
-    lockdown status changes (Activated or Lifted).
+    Dispatches a critical HTML-formatted system alert to all Admin users
+    regarding structural status changes to the Global System Lockdown state.
     """
     if not SMTP_EMAIL or not SMTP_PASSWORD:
         print("⚠️ SMTP credentials not set. Cannot send lockdown email.")
@@ -1551,7 +1611,6 @@ def send_lockdown_email(active):
 
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # HTML Template for Lockdown ACTIVATED
     if active:
         subject = "⚠️🔒 AILOQR SYSTEM LOCKDOWN INITIATED 🔒⚠️"
         body_html = f"""
@@ -1575,7 +1634,6 @@ def send_lockdown_email(active):
         </div>
         """
         
-    # HTML Template for Lockdown LIFTED
     else:
         subject = "✅ AILOQR System Lockdown Lifted"
         body_html = f"""
@@ -1598,19 +1656,16 @@ def send_lockdown_email(active):
         </div>
         """
 
-    # --- EMAIL SENDING ---
     try:
         msg = MIMEMultipart()
         msg['From'] = SMTP_EMAIL
         msg['To'] = ", ".join(admins)
         msg['Subject'] = subject
         
-        # Attach the HTML body
         msg.attach(MIMEText(body_html, 'html'))
 
-        # Connect to Gmail SMTP server
         server = smtplib.SMTP('smtp.gmail.com', 587, timeout=5)
-        server.starttls() # Secure encryption
+        server.starttls() 
         server.login(SMTP_EMAIL, SMTP_PASSWORD)
         
         server.sendmail(SMTP_EMAIL, admins, msg.as_string())
@@ -1620,16 +1675,23 @@ def send_lockdown_email(active):
     except Exception as e:
         print(f"[EMAIL ERROR] Failed to send lockdown email: {e}")
 
-
-#=================================================
-# === APPLICATION START ===
-#=================================================
+# =============================================================================
+# === APPLICATION STARTUP & INITIALIZATION ===
+# =============================================================================
 
 if __name__ == "__main__":
 
     env = os.environ.get("ENVIRONMENT", "development")
     is_debug = (env == "development")
     port = int(os.environ.get("PORT", 5000))
+
+    # --- DATABASE INITIALIZATION ---
+    print("🔄 Verifying database schemas and default configurations...")
+    try:
+        initialize_database()
+        print("✅ Database schemas verified successfully.")
+    except Exception as e:
+        print(f"❌ CRITICAL ERROR: Database initialization failed: {e}")
 
     # --- PRE-LOAD AI MODEL ON START ---
     print("Initializing AI model...")

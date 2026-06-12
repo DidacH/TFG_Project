@@ -1,34 +1,48 @@
 import pandas as pd
-from sklearn.ensemble import IsolationForest
-from sklearn.preprocessing import LabelEncoder, StandardScaler
-from database import get_db_connection
 import numpy as np
 import os
 import smtplib
+import pickle
+import random
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from psycopg2 import extras
-import pickle
 from datetime import datetime, timedelta
-import random
-from apscheduler.schedulers.background import BackgroundScheduler
-from dotenv import load_dotenv
-load_dotenv()  # Load environment variables from .env file
 
-# --- SMTP CONFIGURATION ---
+from sklearn.ensemble import IsolationForest
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from apscheduler.schedulers.background import BackgroundScheduler
+from psycopg2 import extras
+from dotenv import load_dotenv
+
+from database import get_db_connection
+
+load_dotenv() 
+
+# =============================================================================
+# === CONFIGURATION & GLOBALS ===
+# =============================================================================
+
 SMTP_EMAIL = os.getenv("SMTP_EMAIL")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 
-# --- Model and Preprocessing ---
 MODEL_FILE = 'security_model_data.pkl'
 model = None
 scaler = None
 label_encoders = {}
-FEATURE_COLUMNS = ['role_encoded', 'area_encoded', 'hour', 'weekday', 'is_admin', 'time_since_last_access', 'access_frequency_1h']
+FEATURE_COLUMNS = [
+    'role_encoded', 'area_encoded', 'hour', 'weekday', 
+    'is_admin', 'time_since_last_access', 'access_frequency_1h'
+]
 
+# =============================================================================
+# === DATABASE UTILITIES ===
+# =============================================================================
 
 def get_anomaly_threshold():
-    """Fetches the current AI threshold from the database in real-time."""
+    """
+    Fetches the current AI sensitivity threshold from the database in real-time.
+    Provides a secure fallback value if the database is unreachable.
+    """
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -39,13 +53,32 @@ def get_anomaly_threshold():
         if row:
             return float(row[0])
     except Exception as e:
-        print(f"Error fetching threshold from DB, using fallback: {e}")
+        print(f"[DB ERROR] Failed fetching threshold from DB, using fallback: {e}")
     
-    return -0.025 # Security fallback threshold if DB access fails
+    return -0.025
 
+
+def get_admin_emails():
+    """Retrieves a list of email addresses for all users with Administrative privileges."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT email FROM users WHERE role = 'Admin'")
+        emails = [row[0] for row in cur.fetchall()]
+        return emails
+    except Exception as e:
+        print(f"[DB ERROR] Error fetching admin emails: {e}")
+        return []
+    finally:
+        cur.close()
+        conn.close()
+
+# =============================================================================
+# === ML MODEL: TRAINING & PREPROCESSING ===
+# =============================================================================
 
 def save_model_artifacts():
-    """Save the model, scaler, and encoders to file."""
+    """Serializes and saves the active model, scaler, and label encoders to disk."""
     artifacts = {
         'model': model,
         'scaler': scaler,
@@ -53,36 +86,32 @@ def save_model_artifacts():
     }
     with open(MODEL_FILE, 'wb') as f:
         pickle.dump(artifacts, f)
-    print(f"Model and artifacts stored in {MODEL_FILE}")
+    print(f"[AI PIPELINE] Model and artifacts stored in {MODEL_FILE}")
+
 
 def preprocess_data(df, is_training=False):
     """
-    Feature engineering and scaling.
-    Calculates time-based features and encodes categories.
+    Executes Feature Engineering and Data Scaling.
+    Extracts temporal components, flags admin status, encodes categorical variables,
+    and scales continuous numerical features.
     """
     global label_encoders, scaler
     
-    # Basic time features
     df['access_time'] = pd.to_datetime(df['access_time'])
     df['hour'] = df['access_time'].dt.hour
     df['weekday'] = df['access_time'].dt.dayofweek
-    
-    # is_admin feature to distinguish admin users (who have more flexible access patterns)
     df['is_admin'] = df['role'].apply(lambda x: 1 if x == 'Admin' else 0)
 
-    # Encoding (Role & Area)
     for col in ['role', 'area']:
         encoder = label_encoders.get(col, LabelEncoder())
         if is_training:
             df[f'{col}_encoded'] = encoder.fit_transform(df[col])
             label_encoders[col] = encoder
         else:
-            # Handle unknown labels during prediction
             df[f'{col}_encoded'] = df[col].apply(
                 lambda x: encoder.transform([x])[0] if x in encoder.classes_ else len(encoder.classes_)
             )
 
-    # Scaling numerical features
     cols_to_scale = ['hour', 'weekday', 'time_since_last_access', 'access_frequency_1h']
     if is_training:
         scaler = StandardScaler()
@@ -92,14 +121,15 @@ def preprocess_data(df, is_training=False):
 
     return df
 
+
 def train_security_model(dataset: pd.DataFrame):
     """
-    Trains the Isolation Forest using a provided DataFrame.
-    The dataset should include: role, area, access_time, time_since_last_access, access_frequency_1h.
+    Initializes and trains the Unsupervised Machine Learning Model (Isolation Forest)
+    using the provided normative dataset.
     """
     global model
     
-    print("Starting security model training...")
+    print("[AI PIPELINE] Starting security model training...")
     df_processed = preprocess_data(dataset, is_training=True)
     
     X_train = df_processed[FEATURE_COLUMNS]
@@ -108,10 +138,14 @@ def train_security_model(dataset: pd.DataFrame):
     model.fit(X_train)
     
     save_model_artifacts()
-    print("Security model trained successfully.")
+    print("[AI PIPELINE] Security model trained successfully.")
+
 
 def load_or_train_model():
-    """Loads existing model or triggers training if missing."""
+    """
+    Loads pre-trained model artifacts into memory upon server startup.
+    Returns False if artifacts are missing, requiring an initial training execution.
+    """
     global model, scaler, label_encoders
     if os.path.exists(MODEL_FILE):
         try:
@@ -122,16 +156,25 @@ def load_or_train_model():
             label_encoders = artifacts['label_encoders']
             return True
         except Exception as e:
-            print(f"Error loading model: {e}")
+            print(f"[AI ERROR] Failed loading model artifacts: {e}")
     return False
 
+# =============================================================================
+# === ML MODEL: INFERENCE & XAI ===
+# =============================================================================
+
 def get_user_history_features(user_id):
+    """
+    Fetches real-time historical context for a specific user to compute
+    dynamic features: 'time_since_last_access' and 'access_frequency_1h'.
+    """
     conn = get_db_connection()
     cur = conn.cursor()
     try:
         cur.execute("SELECT access_time FROM logs WHERE user_id = %s ORDER BY access_time::timestamp DESC LIMIT 1", (user_id,))
         last_row = cur.fetchone()
         time_since = 3600 
+        
         if last_row:
             db_time = pd.to_datetime(last_row[0])
             diff = datetime.now() - db_time
@@ -146,13 +189,21 @@ def get_user_history_features(user_id):
         cur.close()
         conn.close()
 
+
 def predict_anomaly(log_entry, provided_features=None):
+    """
+    Evaluates a new access log against the Isolation Forest model.
+    Utilizes Explainable AI (XAI) logic to provide human-readable reasoning 
+    for why a particular log was flagged as an anomaly.
+    
+    Returns:
+        tuple: (Risk Score, Boolean Anomaly Flag, XAI Explanation String)
+    """
     global model
     if not model:
         if not load_or_train_model():
-            return 0.0, False 
+            return 0.0, False, None
 
-    # Use CSV data features if provided (for testing), otherwise fetch from DB
     if provided_features:
         time_since = provided_features['time_since_last_access']
         count_1h = provided_features['access_frequency_1h']
@@ -170,19 +221,16 @@ def predict_anomaly(log_entry, provided_features=None):
     threshold = get_anomaly_threshold()
     is_anomaly = score < threshold
 
-    # --- EXPLAINABLE AI (XAI) LOGIC ---
+    # Explainable AI (XAI) Logic Engine
     explanation = None
-    
     if is_anomaly:
-
-        # First, check the deviations in continuous features to identify the most significant anomaly driver
         cols_to_scale = ['hour', 'weekday', 'time_since_last_access', 'access_frequency_1h']
         scaled_values = log_processed[cols_to_scale].iloc[0].abs()
         
         max_num_deviation = scaled_values.max()
         max_num_feature = scaled_values.idxmax()
         
-        # If the numerical deviation is significative (Z-score > 1.5)
+        # Determine if continuous temporal features caused the anomaly (Z-score > 1.5)
         if max_num_deviation > 1.5:
             if max_num_feature == 'hour':
                 explanation = "Unusual access time based on historical routine."
@@ -193,42 +241,32 @@ def predict_anomaly(log_entry, provided_features=None):
             elif max_num_feature == 'time_since_last_access':
                 explanation = "Unusual inactivity gap prior to this access."
         else:
-            # If the numerical features don't show a clear anomaly driver, we check the categorical features for rare combinations
+            # Fallback to categorical/spatial anomaly assumption
             explanation = f"Unusual spatial access pattern: Role '{log_entry['role']}' does not typically access '{log_entry['area']}' under these conditions."
     
     return score, is_anomaly, explanation
 
-def get_admin_emails():
-    """Fetches a list of emails for all users with the 'Admin' role."""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    try:
-        cur.execute("SELECT email FROM users WHERE role = 'Admin'")
-        # fetchall returns a tuple list. We extract the first element of each tuple.
-        emails = [row[0] for row in cur.fetchall()]
-        return emails
-    except Exception as e:
-        print(f"Error fetching admin emails: {e}")
-        return []
-    finally:
-        cur.close()
-        conn.close()
+# =============================================================================
+# === NOTIFICATION SYSTEM ===
+# =============================================================================
 
 def send_anomaly_alert(log_entry, risk_score):
-    """ Sends a formatted HTML email to ALL administrators in case of an AI anomaly. """
+    """
+    Constructs and dispatches an HTML-formatted email alert to all administrators
+    when the AI Engine detects a high-confidence security anomaly.
+    """
     if not SMTP_EMAIL or not SMTP_PASSWORD:
-        print("⚠️ SMTP credentials not set. Cannot send anomaly alert email.")
+        print("[SMTP WARN] Credentials not set. Cannot send anomaly alert email.")
         return 
     
     admin_emails = get_admin_emails()
     if not admin_emails:
-        print("ALERT: Anomaly detected but NO ADMINS found in database.")
+        print("[SMTP WARN] Anomaly detected but no admin emails found.")
         return
 
     subject = f"⚠️ AI SECURITY ALERT: Anomaly Detected in {log_entry.get('area', 'Unknown')}"
     xai_reason = log_entry.get('ai_explanation', 'No detailed context available.')
 
-    # Aesthetic HTML Template for AI Anomaly
     body_html = f"""
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
         <div style="background-color: #f39c12; color: white; padding: 15px 20px;">
@@ -273,29 +311,30 @@ def send_anomaly_alert(log_entry, risk_score):
         server.starttls()
         server.login(SMTP_EMAIL, SMTP_PASSWORD)
         
-        text = msg.as_string()
-        server.sendmail(SMTP_EMAIL, admin_emails, text)
+        server.sendmail(SMTP_EMAIL, admin_emails, msg.as_string())
         server.quit()
-        print(f"[EMAIL] AI Alert sent successfully for User {log_entry.get('user_id')}")
+        print(f"[SMTP] AI Alert sent successfully for User {log_entry.get('user_id')}")
         
     except Exception as e:
-        print(f"[EMAIL ERROR] Failed to send AI alert via Gmail: {e}")
+        print(f"[SMTP ERROR] Failed to send AI alert via Gmail: {e}")
 
 
 def send_access_denied_alert(log_entry):
-    """ Sends a formatted HTML email to ALL administrators in case of a Hard Rule violation. """
+    """
+    Constructs and dispatches an HTML-formatted email alert to all administrators
+    when a critical Hard Rule violation occurs.
+    """
     if not SMTP_EMAIL or not SMTP_PASSWORD:
-        print("⚠️ SMTP credentials not set. Cannot send denied alert email.")
+        print("[SMTP WARN] Credentials not set. Cannot send denied alert email.")
         return 
 
     admin_emails = get_admin_emails()
     if not admin_emails:
-        print("ALERT: Denied access detected but NO ADMINS found in database.")
+        print("[SMTP WARN] Denied access detected but no admin emails found.")
         return
 
     subject = f"⛔ UNAUTHORIZED ACCESS: Attempt Blocked in {log_entry.get('area', 'Unknown')}"
 
-    # Aesthetic HTML Template for Hard Rule Block
     body_html = f"""
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
         <div style="background-color: #c0392b; color: white; padding: 15px 20px;">
@@ -332,23 +371,23 @@ def send_access_denied_alert(log_entry):
         server.starttls()
         server.login(SMTP_EMAIL, SMTP_PASSWORD)
         
-        text = msg.as_string()
-        server.sendmail(SMTP_EMAIL, admin_emails, text)
+        server.sendmail(SMTP_EMAIL, admin_emails, msg.as_string())
         server.quit()
-        print(f"[EMAIL] Denied access alert sent successfully for User {log_entry.get('user_id')}")
+        print(f"[SMTP] Denied access alert sent successfully for User {log_entry.get('user_id')}")
         
     except Exception as e:
-        print(f"[EMAIL ERROR] Failed to send denied alert via Gmail: {e}")
+        print(f"[SMTP ERROR] Failed to send denied alert via Gmail: {e}")
 
+# =============================================================================
+# === AUTOMATED RETRAINING PIPELINE ===
+# =============================================================================
 
 def fetch_all_logs():
-    """ Obtain all logs and relevant user data from the database. """
+    """Obtains all raw logs and relevant user data joined from the database."""
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=extras.DictCursor)
     
-    # Use JOIN to obtain user data along with logs
     cur.execute("""
-
         SELECT 
             l.access_time, l.area, l.entry_allowed, l.reason,
             u.role, u.email, u.id AS user_id, u.registered_at
@@ -360,17 +399,15 @@ def fetch_all_logs():
     cur.close()
     conn.close()
     
-    # Convert results to DataFrame
     return pd.DataFrame(logs)
 
 
-# --- AUTOMATED RETRAINING PIPELINE ---
-
 def fetch_recent_normative_logs(limit=10000):
     """
-    Fetches the most recent standard access logs from the database.
-    Strictly excludes logs flagged as threats (is_threat = TRUE).
-    Calculates the dynamic temporal features before returning the DataFrame.
+    Fetches the most recent standard (normative) access logs from the database 
+    to form the baseline dataset for model retraining. Strictly excludes threats.
+    Dynamically recalculates rolling temporal features ('time_since_last_access', 
+    'access_frequency_1h') across the queried timeframe.
     """
     conn = get_db_connection()
     df = pd.DataFrame()
@@ -392,21 +429,14 @@ def fetch_recent_normative_logs(limit=10000):
             columns = [desc[0] for desc in cur.description]
             df = pd.DataFrame(rows, columns=columns)
             
-            print("⏳ Calculating dynamic temporal features for retraining...")
+            print("[AI PIPELINE] Calculating dynamic temporal features for retraining...")
             
-            # Ensure access_time is a datetime object
             df['access_time'] = pd.to_datetime(df['access_time'])
-            
-            # Sort chronologically for accurate calculations
             df = df.sort_values('access_time')
             
-            # Calculate 'time_since_last_access'
             df['time_since_last_access'] = df.groupby('user_id')['access_time'].diff().dt.total_seconds()
+            df['time_since_last_access'] = df['time_since_last_access'].fillna(86400) # Default to 1 day for initial access
             
-            # For the first access of each user, set a default large value (e.g., 86400 seconds = 1 day)
-            df['time_since_last_access'] = df['time_since_last_access'].fillna(86400)
-            
-            # Calculate 'access_frequency_1h'
             def count_last_hour(series):
                 return series.rolling('1h', closed='left').count().fillna(0)
                 
@@ -414,47 +444,47 @@ def fetch_recent_normative_logs(limit=10000):
             df['access_frequency_1h'] = df.groupby('user_id')['user_id'].transform(count_last_hour)
             df = df.reset_index()
             
-            # Restore original descending order (newest first)
             df = df.sort_values('access_time', ascending=False)
             
     except Exception as e:
-        print(f"Error fetching normative logs for retraining: {e}")
+        print(f"[AI ERROR] Error fetching normative logs for retraining: {e}")
     finally:
         cur.close()
         conn.close()
         
     return df
 
+
 def execute_auto_retraining():
     """
-    Executes the automated retraining pipeline to adapt to concept drift.
-    Retrieves fresh data and updates the Isolation Forest model artifacts.
+    Executes the automated retraining pipeline to combat model decay (concept drift).
+    Fetches fresh normative data and updates the Isolation Forest artifacts.
     """
-    print(f"[{datetime.now()}] Initiating scheduled AI auto-retraining...")
+    print(f"\n[AI PIPELINE] [{datetime.now()}] Initiating scheduled AI auto-retraining...")
     
     df_recent = fetch_recent_normative_logs(limit=10000)
     
-    # Ensure there is enough data to build a meaningful Isolation Forest
+    # Validation constraint to prevent underfitting
     if df_recent.empty or len(df_recent) < 1000:
-        print("Insufficient new normative data for retraining. Aborting process.")
+        print("[AI PIPELINE] Insufficient new normative data for retraining. Aborting process.")
         return
 
     try:
-        # Call the existing training function with the fresh DataFrame
         train_security_model(df_recent)
-        print("✅ AI Auto-retraining completed successfully. Model artifacts updated.")
+        print("[AI PIPELINE] ✅ AI Auto-retraining completed successfully. Model artifacts updated.")
     except Exception as e:
-        print(f"❌ Error during model retraining: {e}")
+        print(f"[AI ERROR] ❌ Error during model retraining: {e}")
+
 
 def start_retraining_scheduler():
     """
-    Initializes a background scheduler to retrain the model periodically.
-    Configured to run during low-traffic periods to avoid server load.
+    Initializes a background task scheduler to asynchronously trigger
+    the model retraining pipeline during defined low-traffic periods.
     """
     scheduler = BackgroundScheduler()
     
-    # Schedule the retraining job to run every Sunday at 03:00 AM
+    # Execute retraining job every Sunday at 03:00 AM server time
     scheduler.add_job(execute_auto_retraining, 'cron', day_of_week='sun', hour=3, minute=0)
     
     scheduler.start()
-    print("🕒 Model auto-retraining scheduler started. Next run scheduled.")
+    print("[AI PIPELINE] 🕒 Model auto-retraining scheduler active. Next run scheduled.")

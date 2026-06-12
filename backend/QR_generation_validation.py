@@ -1,42 +1,64 @@
 import qrcode
-import hmac, hashlib
+import hmac
+import hashlib
 import time
 import io
+import pytz
 from datetime import datetime
 from database import get_db_connection
-import pytz
 
-# --- CACHE FOR HARD RULES AND CONFIG ---
+# =============================================================================
+# === CACHE CONFIGURATION ===
+# =============================================================================
+
+# In-memory cache to prevent excessive database queries during high-traffic 
+# scanning events. Refreshes based on the defined Time-To-Live (TTL).
 _RULES_CACHE = None
 _CONFIG_CACHE = None
 _LAST_CACHE_UPDATE = 0
 CACHE_TTL = 60  # Cache Time-To-Live in seconds
 
+# =============================================================================
+# === QR CRYPTOGRAPHY & GENERATION ===
+# =============================================================================
 
 def generate_qr(user_id, secret_key):
-    timestamp = int(time.time())  #current UNIX time
+    """
+    Generates a cryptographically signed QR code payload using HMAC-SHA256.
+    
+    The payload includes the user ID, the current UNIX timestamp, and the 
+    corresponding signature to prevent forgery and ensure temporal validity.
+    
+    Returns:
+        tuple: (QR image as a bytes buffer, UNIX timestamp of generation)
+    """
+    timestamp = int(time.time())
     message = f"{user_id}:{timestamp}"
     signature = hmac.new(secret_key, message.encode(), hashlib.sha256).hexdigest()
     content = f"{user_id}:{timestamp}:{signature}"
     
     img = qrcode.make(content)
 
-    #Convert image to bytes
     img_bytes = io.BytesIO()
     img.save(img_bytes, format='PNG')
     img_bytes = img_bytes.getvalue()
 
     return img_bytes, timestamp
 
+# =============================================================================
+# === VALIDATION & RBAC LOGIC ===
+# =============================================================================
 
-#Load hard rules and config from DB with caching for efficiency
 def load_rules_from_db():
-    """Loads access rules and config from the database into cache."""
+    """
+    Retrieves dynamic access control rules (RBAC) and global configurations 
+    from the PostgreSQL database and caches them in memory.
+    Respects the CACHE_TTL to optimize query performance.
+    """
     global _RULES_CACHE, _CONFIG_CACHE, _LAST_CACHE_UPDATE
     
     current_time = time.time()
     
-    # Don't reload if cache is still valid and not empty
     if _RULES_CACHE and _CONFIG_CACHE and (current_time - _LAST_CACHE_UPDATE < CACHE_TTL):
         return
 
@@ -56,17 +78,14 @@ def load_rules_from_db():
                 'area': area,
                 'days': [int(d) for d in days.split(',')] if days else [],
                 'start_time': start_time,
-                'end_time': end_time,     # objecte datetime.time
+                'end_time': end_time,
                 'is_active': is_active
             })
             
-        
-        # Load System Config (e.g., closed hours, lockdown status)
         cur.execute("SELECT key_name, value_data FROM system_config")
         configs = cur.fetchall()
         
         temp_config = {}
-        # Parse closed hours
         for key, value in configs:
             if key == 'closed_hours':
                 try:
@@ -86,19 +105,27 @@ def load_rules_from_db():
         conn.close()
         
     except Exception as e:
-        print(f"Error loading rules from DB: {e}")
-        # If DB fails, keep old cache or empty if first run
+        print(f"[CACHE ERROR] Failed to load rules from DB: {e}")
         if _RULES_CACHE is None: _RULES_CACHE = {}
         if _CONFIG_CACHE is None: _CONFIG_CACHE = {}
 
 
 def verify_qr(content, secret_key, target_area):
+    """
+    Validation engine for physical access scans.
+    Executes multiple security layers: Payload integrity, HMAC signature verification,
+    User block status, Global Lockdown overrides, Timestamp expiration, and 
+    Role-Based Access Control (Area, Days, Hours).
+    
+    Returns:
+        dict: Validation results including boolean status, error codes, and contextual reasons.
+    """
     now = int(time.time())
-
     spain_tz = pytz.timezone('Europe/Madrid')
     current_dt = datetime.now(spain_tz)
     time_str = current_dt.strftime('%Y-%m-%d %H:%M:%S')
     
+    # 1. Payload structural verification
     try:
         user_id, timestamp_str, received_signature = content.split(":")
         timestamp = int(timestamp_str)
@@ -112,7 +139,7 @@ def verify_qr(content, secret_key, target_area):
             'access_time': time_str
         }
 
-    # Verify signature
+    # 2. Cryptographic signature verification
     message = f"{user_id}:{timestamp}"
     expected_signature = hmac.new(secret_key, message.encode(), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(received_signature, expected_signature):
@@ -125,7 +152,7 @@ def verify_qr(content, secret_key, target_area):
             'access_time': time_str
         }
 
-    # Fetch user role and block status from DB
+    # 3. User verification and state retrieval
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("SELECT role, is_blocked FROM users WHERE id = %s", (user_id,))
@@ -143,11 +170,10 @@ def verify_qr(content, secret_key, target_area):
             'access_time': time_str
         }
 
-    # Extract role and block status, handling both dict and tuple cases
     role = user['role'] if isinstance(user, dict) or hasattr(user, 'keys') else user[0]
     is_blocked = user['is_blocked'] if isinstance(user, dict) or hasattr(user, 'keys') else user[1]
 
-    # INDIVIDUAL USER BLOCK CHECK
+    # 4. Individual user block evaluation
     if is_blocked:
         return {
             'valid': False,
@@ -158,12 +184,12 @@ def verify_qr(content, secret_key, target_area):
             'access_time': time_str
         }
 
-    # GLOBAL LOCKDOWN CHECK
     load_rules_from_db()
+
+    # 5. Global System Lockdown evaluation
     is_locked = _CONFIG_CACHE.get('system_lockdown', False)
-    
     if is_locked:
-        # Exception: Admins can bypass lockdown
+        # Administrative override exception
         if role != 'Admin':
             return {
                 'valid': False, 
@@ -174,12 +200,10 @@ def verify_qr(content, secret_key, target_area):
                 'access_time': time_str
             }
 
-    
-
-    # Check expiration
-    expiration_seconds = 30  #seconds
-    grace_period = 5  #seconds, for clock skew
-    if now - timestamp > expiration_seconds+grace_period:
+    # 6. Temporal Expiration Check (Replay Attack Prevention)
+    expiration_seconds = 30
+    grace_period = 5  # Buffer for network latency and clock skew
+    if now - timestamp > expiration_seconds + grace_period:
         return {
             'valid': False,
             'error_code': 'EXPIRED_QR',
@@ -189,28 +213,20 @@ def verify_qr(content, secret_key, target_area):
             'access_time': time_str
         }
     
-    # Check role permissions
-    load_rules_from_db()
+    # 7. Role-Based Access Control (RBAC) Evaluation
     role_rules = _RULES_CACHE.get(role, [])
-    
     current_weekday = current_dt.weekday() # 0 = Monday, 6 = Sunday
     current_time_only = current_dt.time()
     
     has_access = False
     
-    # Evaluate all rules for the user's role. If any rule grants access, we allow it (logical OR).
+    # Iterate through all configured rules for the given role (Logical OR)
     for rule in role_rules:
-        # Skip rule if deactivated
         if not rule.get('is_active', True):
             continue
             
-        # Has area permission? (either specific area or ALL)
         area_match = (rule['area'] == 'ALL' or rule['area'] == target_area)
-        
-        # Are we on an allowed day?
         day_match = (current_weekday in rule['days'])
-        
-        # Are we within allowed time range?
         time_match = (rule['start_time'] <= current_time_only <= rule['end_time'])
         
         if area_match and day_match and time_match:
@@ -227,11 +243,18 @@ def verify_qr(content, secret_key, target_area):
             'access_time': time_str
         }
 
-    # Check Global Time (Facility Closed Hours) (specifically closed hours to avoid having to restrict by role)
-    # Exception: Admins can access anytime
+    # 8. Global Facility Schedule Evaluation
     if current_dt.hour in _CONFIG_CACHE.get('closed_hours', []) and role != 'Admin':
-        return {'valid': False, 'error_code': 'TIME_VIOLATION',  'reason': 'Facilities closed', 'user_id': user_id, 'role': role, 'access_time': time_str}
+        return {
+            'valid': False, 
+            'error_code': 'TIME_VIOLATION',  
+            'reason': 'Facilities closed', 
+            'user_id': user_id, 
+            'role': role, 
+            'access_time': time_str
+        }
 
+    # Access Granted
     return {
         'valid': True,
         'error_code': None,

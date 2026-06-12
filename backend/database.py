@@ -1,23 +1,51 @@
-import bcrypt
-from datetime import datetime
-from dotenv import load_dotenv
 import os
+import bcrypt
 import psycopg2
 from psycopg2 import extras
-import random
-import uuid
-from datetime import datetime, timedelta
+from dotenv import load_dotenv
 
-load_dotenv()  #Load environment variables from .env file
+# Load environment variables
+load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+# =================================================
+# === CORE CONNECTION MANAGEMENT ===
+# =================================================
+
 def get_db_connection():
+    """Establishes and returns a connection to the PostgreSQL database."""
     conn = psycopg2.connect(DATABASE_URL)
     conn.cursor_factory = extras.DictCursor
     return conn
 
+
+# =================================================
+# === DATABASE INITIALIZATION & SEEDING ===
+# =================================================
+
+def initialize_database():
+    """
+    Master initialization function.
+    Creates all required tables if they do not exist and populates
+    essential default data (roles, system configs, default access rules).
+    Ensures the database is ready for application startup.
+    """
+    init_roles_table()
+    init_users_table()
+    init_logs_table()
+    init_access_rules_table()
+    init_system_config_table()
+    init_alert_rules_table()
+
+    # Seed initial required data if tables are empty
+    insert_default_system_config()
+    insert_initial_access_rules()
+    insert_initial_alert_rules()
+
+
 def init_roles_table():
+    """Initializes the roles table and inserts default system roles."""
     conn = None
     cur = None
     try:
@@ -28,21 +56,23 @@ def init_roles_table():
                 name TEXT PRIMARY KEY
             );
         ''')
-        #Initial roles insertion
+        
+        # Ensure default roles exist without duplicating
         initial_roles = ['Student', 'Professor', 'Staff', 'Admin']
         for role_name in initial_roles:
-            #ON CONFLICT DO NOTHING prevent errors if role already exists
             cur.execute("INSERT INTO roles (name) VALUES (%s) ON CONFLICT (name) DO NOTHING", (role_name,))
 
         conn.commit()
     except Exception as e:
         if conn: conn.rollback()
-        print(f"Error in init_roles_table: {e}")
+        print(f"[DB ERROR] init_roles_table: {e}")
     finally:
         if cur: cur.close()
         if conn: conn.close()
 
+
 def init_users_table():
+    """Initializes the main users table with foreign key reference to roles."""
     conn = None
     cur = None
     try:
@@ -64,12 +94,14 @@ def init_users_table():
         conn.commit()
     except Exception as e:
         if conn: conn.rollback()
-        print(f"Error in init_users_table: {e}")
+        print(f"[DB ERROR] init_users_table: {e}")
     finally:
         if cur: cur.close()
         if conn: conn.close()
 
+
 def init_logs_table():
+    """Initializes the audit logs table for access tracking and AI anomaly results."""
     conn = None
     cur = None
     try:
@@ -95,19 +127,19 @@ def init_logs_table():
         conn.commit()
     except Exception as e:
         if conn: conn.rollback()
-        print(f"Error in init_logs_table: {e}")
+        print(f"[DB ERROR] init_logs_table: {e}")
     finally:
         if cur: cur.close()
         if conn: conn.close()
 
-# Table to define access rules per role
+
 def init_access_rules_table():
+    """Initializes the dynamic role-based access rules table."""
     conn = None
     cur = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        # Crear taula si no existeix amb les noves columnes
         cur.execute('''
             CREATE TABLE IF NOT EXISTS access_rules (
                 id SERIAL PRIMARY KEY,
@@ -120,33 +152,32 @@ def init_access_rules_table():
             );
         ''')
         
-        # MIGRACIÓ SEGURA: Afegir columnes si la taula ja existia d'abans
+        # Safe schema migration for older database versions
         try:
             cur.execute("ALTER TABLE access_rules ADD COLUMN IF NOT EXISTS allowed_days VARCHAR(50) DEFAULT '0,1,2,3,4,5,6'")
             cur.execute("ALTER TABLE access_rules ADD COLUMN IF NOT EXISTS start_time TIME DEFAULT '00:00:00'")
             cur.execute("ALTER TABLE access_rules ADD COLUMN IF NOT EXISTS end_time TIME DEFAULT '23:59:59'")
             cur.execute("ALTER TABLE access_rules ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE")
-        except Exception as alt_e:
-            print(f"Alter table ignored (columns might already exist): {alt_e}")
+        except Exception:
+            pass # Ignore if columns already exist
 
         conn.commit()
     except Exception as e:
         if conn: conn.rollback()
-        print(f"Error in init_access_rules_table: {e}")
+        print(f"[DB ERROR] init_access_rules_table: {e}")
     finally:
         if cur: cur.close()
         if conn: conn.close()
 
-# Initial access rules insertion
+
 def insert_initial_access_rules():
+    """Seeds basic access rules if the table is completely empty."""
     conn = None
     cur = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        # Check if there are already rules to avoid duplicates
         cur.execute("SELECT COUNT(*) FROM access_rules")
-        # Insert default rules only if table is empty
         if cur.fetchone()[0] == 0:
             cur.execute('''
                 INSERT INTO access_rules (role, allowed_area, allowed_days, start_time, end_time, is_active) VALUES 
@@ -158,13 +189,14 @@ def insert_initial_access_rules():
             conn.commit()
     except Exception as e:
         if conn: conn.rollback()
-        print(f"Error in insert_initial_access_rules: {e}")
+        print(f"[DB ERROR] insert_initial_access_rules: {e}")
     finally:
         if cur: cur.close()
         if conn: conn.close()
 
-#Global configurations table
+
 def init_system_config_table():
+    """Initializes key-value configuration table for dynamic global parameters."""
     conn = None
     cur = None
     try:
@@ -179,13 +211,14 @@ def init_system_config_table():
         conn.commit()
     except Exception as e:
         if conn: conn.rollback()
-        print(f"Error in init_system_config_table: {e}")
+        print(f"[DB ERROR] init_system_config_table: {e}")
     finally:
         if cur: cur.close()
         if conn: conn.close()
 
-# Insert default configurations
+
 def insert_default_system_config():
+    """Seeds required default global variables."""
     conn = None
     cur = None
     try:
@@ -193,7 +226,7 @@ def insert_default_system_config():
         cur = conn.cursor()
         cur.execute('''
             INSERT INTO system_config (key_name, value_data) VALUES 
-            ('system_lockdown', 'FALSE'),
+            ('system_lockdown', 'false'),
             ('closed_hours', '23,0,1,2,3,4,5,6'),
             ('anomaly_threshold', '-0.025')
             ON CONFLICT (key_name) DO NOTHING;
@@ -201,12 +234,14 @@ def insert_default_system_config():
         conn.commit()
     except Exception as e:
         if conn: conn.rollback()
-        print(f"Error in insert_default_system_config: {e}")
+        print(f"[DB ERROR] insert_default_system_config: {e}")
     finally:
         if cur: cur.close()
         if conn: conn.close()
 
+
 def init_alert_rules_table():
+    """Initializes trigger definitions for automated email alerts."""
     conn = None
     cur = None
     try:
@@ -214,61 +249,79 @@ def init_alert_rules_table():
         cur = conn.cursor()
         cur.execute('''
             CREATE TABLE IF NOT EXISTS alert_rules (
-            id SERIAL PRIMARY KEY,
-            event_type VARCHAR(50) NOT NULL,
-            role_filter VARCHAR(50) NOT NULL DEFAULT 'ALL',
-            area_filter VARCHAR(100) NOT NULL DEFAULT 'ALL',
-            is_active BOOLEAN DEFAULT TRUE
-        );
+                id SERIAL PRIMARY KEY,
+                event_type VARCHAR(50) NOT NULL,
+                role_filter VARCHAR(50) NOT NULL DEFAULT 'ALL',
+                area_filter VARCHAR(100) NOT NULL DEFAULT 'ALL',
+                is_active BOOLEAN DEFAULT TRUE
+            );
         ''')
         conn.commit()
     except Exception as e:
         if conn: conn.rollback()
-        print(f"Error in init_alert_rules_table: {e}")
+        print(f"[DB ERROR] init_alert_rules_table: {e}")
     finally:
         if cur: cur.close()
         if conn: conn.close()
 
+
+def insert_initial_alert_rules():
+    """Seeds standard notification rules if the table is empty."""
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM alert_rules")
+        if cur.fetchone()[0] == 0:
+            alert_configs = [
+                ('MALFORMED_QR', 'ALL', 'ALL', True),
+                ('FORGED_QR', 'ALL', 'ALL', True),
+                ('UNKNOWN_USER', 'ALL', 'ALL', True),
+                ('AREA_VIOLATION', 'Student', 'Server_Room', True),
+                ('TIME_VIOLATION', 'Student', 'ALL', True)
+            ]
+            cur.executemany(
+                "INSERT INTO alert_rules (event_type, role_filter, area_filter, is_active) VALUES (%s, %s, %s, %s)",
+                alert_configs
+            )
+            conn.commit()
+    except Exception as e:
+        if conn: conn.rollback()
+        print(f"[DB ERROR] insert_initial_alert_rules: {e}")
+    finally:
+        if cur: cur.close()
+        if conn: conn.close()
+
+
+# =================================================
+# === DATA RETRIEVAL & MANAGEMENT ===
+# =================================================
+
 def get_all_roles():
+    """Returns a list of all existing roles."""
     conn = None
     cur = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute("SELECT name FROM roles ORDER BY name DESC")
-        roles = [row['name'] for row in cur.fetchall()]
-        return roles
+        return [row['name'] for row in cur.fetchall()]
     except Exception as e:
-        print(f"Error in get_all_roles: {e}")
+        print(f"[DB ERROR] get_all_roles: {e}")
         return []
     finally:
         if cur: cur.close()
         if conn: conn.close()
 
-def delete_tables():
-    conn = None
-    cur = None
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('DROP TABLE IF EXISTS logs CASCADE') 
-        cur.execute('DROP TABLE IF EXISTS users CASCADE')
-        cur.execute('DROP TABLE IF EXISTS roles CASCADE')
-        cur.execute('DROP TABLE IF EXISTS access_rules CASCADE')
-        cur.execute('DROP TABLE IF EXISTS system_config CASCADE')
-        cur.execute('DROP TABLE IF EXISTS alert_rules CASCADE')
-        conn.commit()
-    except Exception as e:
-        if conn: conn.rollback()
-        print(f"Error in delete_tables: {e}")
-    finally:
-        if cur: cur.close()
-        if conn: conn.close()
 
 def hash_password(password):
-     return bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+    """Hashes a plaintext password utilizing bcrypt."""
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+
 
 def check_password(password, hashed):
+    """Validates a plaintext password against a stored bcrypt hash safely."""
     try:
         if isinstance(hashed, memoryview):
             hashed = bytes(hashed)
@@ -276,13 +329,15 @@ def check_password(password, hashed):
             hashed = bytes.fromhex(hashed[2:])
         return bcrypt.checkpw(password.encode('utf-8'), hashed)
     except ValueError as e:
-        print(f"❌ Critical Password Validation Error (Invalid Salt/Format): {e}")
+        print(f"[DB ERROR] Password Validation Error (Invalid Salt/Format): {e}")
         return False
     except Exception as e:
-        print(f"❌ Unexpected Error in check_password: {e}")
+        print(f"[DB ERROR] check_password: {e}")
         return False
 
+
 def save_user(id, name, email, password, role, qr_image_bytes, timestamp, registered_at):
+    """Creates a new user record in the database."""
     conn = None
     cur = None
     try:
@@ -303,7 +358,9 @@ def save_user(id, name, email, password, role, qr_image_bytes, timestamp, regist
         if cur: cur.close()
         if conn: conn.close()
 
+
 def update_qr_image(user_id, qr_bytes):
+    """Updates the QR code bytes and timestamp for a specific user."""
     conn = None
     cur = None
     try:
@@ -314,12 +371,14 @@ def update_qr_image(user_id, qr_bytes):
         conn.commit()
     except Exception as e:
         if conn: conn.rollback()
-        print(f"Error in update_qr_image: {e}")
+        print(f"[DB ERROR] update_qr_image: {e}")
     finally:
         if cur: cur.close()
         if conn: conn.close()
 
+
 def get_user_by_email(email):
+    """Fetches full user details mapped by their email address."""
     conn = None
     cur = None
     try:
@@ -333,7 +392,7 @@ def get_user_by_email(email):
         ''', (email,))
         
         row = cur.fetchone()
-        if row is None:
+        if not row:
             return None
 
         return {
@@ -346,32 +405,15 @@ def get_user_by_email(email):
             'last_qr_time': row[6],
         }
     except Exception as e:
-        print(f"Database error in get_user_by_email: {e}")
+        print(f"[DB ERROR] get_user_by_email: {e}")
         raise e
     finally:
         if cur: cur.close()
         if conn: conn.close()
 
-def update_user(original_email, new_name, new_email, new_role):
-    conn = None
-    cur = None
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('''
-            UPDATE users
-            SET name = %s, email = %s, role = %s
-            WHERE email = %s
-        ''', (new_name, new_email, new_role, original_email))
-        conn.commit()
-    except Exception as e:
-        if conn: conn.rollback()
-        print(f"Error in update_user: {e}")
-    finally:
-        if cur: cur.close()
-        if conn: conn.close()
 
 def delete_user_by_email(email):
+    """Permanently deletes a user based on their email."""
     conn = None
     cur = None
     try:
@@ -381,60 +423,33 @@ def delete_user_by_email(email):
         conn.commit()
     except Exception as e:
         if conn: conn.rollback()
-        print(f"Error in delete_user_by_email: {e}")
+        print(f"[DB ERROR] delete_user_by_email: {e}")
     finally:
         if cur: cur.close()
         if conn: conn.close()
 
-def verify_password(stored_hash, input_password):
-    return stored_hash == hash_password(input_password)
 
+# =================================================
+# === UTILITY FUNCTIONS (For Admin/Testing) ===
+# =================================================
 
-def show_all_user_states():
+def delete_tables():
+    """WARNING: Destroys all tables in the database. Used only for resets."""
     conn = None
     cur = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute('SELECT email, is_blocked FROM users')
-        users = cur.fetchall()
-        for user in users:
-            print(f"Email: {user['email']}, Blocked: {user['is_blocked']}")
+        cur.execute('DROP TABLE IF EXISTS logs CASCADE') 
+        cur.execute('DROP TABLE IF EXISTS users CASCADE')
+        cur.execute('DROP TABLE IF EXISTS roles CASCADE')
+        cur.execute('DROP TABLE IF EXISTS access_rules CASCADE')
+        cur.execute('DROP TABLE IF EXISTS system_config CASCADE')
+        cur.execute('DROP TABLE IF EXISTS alert_rules CASCADE')
+        conn.commit()
     except Exception as e:
-        print(f"Error in show_all_user_states: {e}")
+        if conn: conn.rollback()
+        print(f"[DB ERROR] delete_tables: {e}")
     finally:
         if cur: cur.close()
         if conn: conn.close()
-
-def print_access_rules():
-    conn = None
-    cur = None
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute('SELECT * FROM access_rules')
-        rules = cur.fetchall()
-        for rule in rules:
-            print(f"ID: {rule['id']}, Role: {rule['role']}, Area: {rule['allowed_area']}, Days: {rule['allowed_days']}, Time: {rule['start_time']} - {rule['end_time']}, Active: {rule['is_active']}")
-    except Exception as e:
-        print(f"Error in print_access_rules: {e}")
-    finally:
-        if cur: cur.close()
-        if conn: conn.close()
-
-if __name__ == "__main__":
-    #delete_tables()  #Use with caution - deletes all data
-
-    #Init tables
-    # init_roles_table()
-    # init_users_table()
-    # init_logs_table()
-    # init_access_rules_table()
-    # insert_initial_access_rules()
-    # init_system_config_table()
-    # insert_default_system_config()
-    # init_alert_rules_table()
-
-    print_access_rules()
-
-    #show_all_user_states()
