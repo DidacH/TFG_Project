@@ -1564,12 +1564,12 @@ def find_cluster_ids_for_log(conn, target_log_id):
 def auto_review_old_logs(conn):
     """
     Automated housekeeping procedure. Discards low-severity AI flags older 
-    than 24 hours to maintain dashboard usability and relevancy.
+    than 72 hours to maintain dashboard usability and relevancy.
     """
     try:
         cur = conn.cursor()
         
-        yesterday_obj = datetime.now() - timedelta(days=1)
+        yesterday_obj = datetime.now() - timedelta(days=3)
         yesterday_str = yesterday_obj.strftime("%Y-%m-%d %H:%M:%S")
         
         try:
