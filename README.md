@@ -11,9 +11,8 @@ This project was developed as a **Bachelor's Thesis (Treball de Final de Grau)**
 You can access the fully functional cloud-deployed application here:
 **[https://frontend-tfg-project.onrender.com](https://frontend-tfg-project.onrender.com)**
 
-> **Test Admin Credentials:**
-> - **Email:** `didac.hierro@gmail.com`
-> - **Password:** `1234`
+> **Test Admin Access:**
+> - **Admin Key:** `admin`
 
 ---
 
