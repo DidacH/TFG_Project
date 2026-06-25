@@ -307,7 +307,8 @@ def send_anomaly_alert(log_entry, risk_score):
         
         msg.attach(MIMEText(body_html, 'html'))
 
-        server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10)
+        server = smtplib.SMTP('smtp.gmail.com', 587, timeout=5)
+        server.starttls()
         server.login(SMTP_EMAIL, SMTP_PASSWORD)
         
         server.sendmail(SMTP_EMAIL, admin_emails, msg.as_string())
@@ -366,7 +367,8 @@ def send_access_denied_alert(log_entry):
         
         msg.attach(MIMEText(body_html, 'html'))
 
-        server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10)
+        server = smtplib.SMTP('smtp.gmail.com', 587, timeout=5)
+        server.starttls()
         server.login(SMTP_EMAIL, SMTP_PASSWORD)
         
         server.sendmail(SMTP_EMAIL, admin_emails, msg.as_string())
