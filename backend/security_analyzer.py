@@ -2,15 +2,6 @@ import pandas as pd
 import numpy as np
 import os
 import smtplib
-import socket
-
-orig_getaddrinfo = socket.getaddrinfo
-
-def getaddrinfo_ipv4(host, port, family=0, type=0, proto=0, flags=0):
-    return orig_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
-
-socket.getaddrinfo = getaddrinfo_ipv4
-
 import pickle
 import random
 from email.mime.text import MIMEText
@@ -316,8 +307,7 @@ def send_anomaly_alert(log_entry, risk_score):
         
         msg.attach(MIMEText(body_html, 'html'))
 
-        server = smtplib.SMTP('smtp.gmail.com', 587, timeout=5)
-        server.starttls()
+        server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10)
         server.login(SMTP_EMAIL, SMTP_PASSWORD)
         
         server.sendmail(SMTP_EMAIL, admin_emails, msg.as_string())
@@ -376,8 +366,7 @@ def send_access_denied_alert(log_entry):
         
         msg.attach(MIMEText(body_html, 'html'))
 
-        server = smtplib.SMTP('smtp.gmail.com', 587, timeout=5)
-        server.starttls()
+        server = smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10)
         server.login(SMTP_EMAIL, SMTP_PASSWORD)
         
         server.sendmail(SMTP_EMAIL, admin_emails, msg.as_string())
